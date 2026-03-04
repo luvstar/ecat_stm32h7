@@ -1,0 +1,19 @@
+# 빌드 결과물 및 중간 파일
+Debug/
+Release/
+bin/
+obj/
+
+# CubeIDE 로컬 설정 및 캐시
+.settings/
+.launches/
+*.launch
+
+# 하드웨어 설정 및 로그
+*.log
+*.su
+*.history
+
+# 기타 임시 파일
+.metadata/
+RemoteSystemsTempFiles/
