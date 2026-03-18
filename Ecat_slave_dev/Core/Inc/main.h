@@ -56,7 +56,7 @@ extern "C" {
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+extern UART_HandleTypeDef huart1;
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
@@ -66,8 +66,12 @@ void Error_Handler(void);
 #define Ecat_RST_GPIO_Port GPIOE
 #define Ecat_INT_Pin GPIO_PIN_4
 #define Ecat_INT_GPIO_Port GPIOE
+#define TMC_EN_Pin GPIO_PIN_2
+#define TMC_EN_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
+#define ESC_OP 	8
+
 
 /* USER CODE END Private defines */
 

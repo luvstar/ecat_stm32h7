@@ -17,17 +17,75 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include "main.h"
+//#include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ecat_slv.h"
 #include "utypes.h"
+#include "TMC2209_usart.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
+// 1. 모터 음계 VACTUAL 속도 정의 (4옥타브 기준 주파수 계산값)
+#define NOTE_C 94000   // 도
+#define NOTE_D 105000  // 레
+#define NOTE_E 118000  // 미
+#define NOTE_G 140000  // 솔
+#define REST   0       // 쉼표 (정지)
 
+#define NOTE_A3 78000
+  #define NOTE_B3 88000
+  #define NOTE_C4 93000
+  #define NOTE_D4 105000
+  #define NOTE_E4 118000
+  #define NOTE_G4 140000
+  #define NOTE_A4 157000
+  #define REST    0
+
+// 2. 비행기 계명 배열 (미-레-도-레-미-미-미...)
+uint32_t melody[] = {
+    NOTE_E, NOTE_D, NOTE_C, NOTE_D, NOTE_E, NOTE_E, NOTE_E,
+    NOTE_D, NOTE_D, NOTE_D, NOTE_E, NOTE_G, NOTE_G,
+    NOTE_E, NOTE_D, NOTE_C, NOTE_D, NOTE_E, NOTE_E, NOTE_E,
+    NOTE_D, NOTE_D, NOTE_E, NOTE_D, NOTE_C
+};
+
+// 3. 각 음표의 길이 배열 (박자, ms 단위)
+// 400은 4분음표(짧게), 800은 2분음표(길게), 1200은 점2분음표입니다.
+uint32_t noteDurations[] = {
+    400, 400, 400, 400, 400, 400, 800,
+    400, 400, 800, 400, 400, 800,
+    400, 400, 400, 400, 400, 400, 800,
+    400, 400, 400, 400, 1200
+};
+
+// 2. Legends Never Die 하이라이트 전체 악보
+  uint32_t melody_l[] = {
+		  NOTE_E4, NOTE_E4, NOTE_E4, NOTE_D4, NOTE_E4,
+		        NOTE_G4, NOTE_G4, NOTE_G4, NOTE_E4, NOTE_D4, NOTE_C4, NOTE_D4,
+		        NOTE_E4, NOTE_E4, NOTE_E4, NOTE_D4, NOTE_E4, NOTE_G4, NOTE_A4, NOTE_G4, NOTE_E4,
+
+		        NOTE_E4, NOTE_E4, NOTE_E4, NOTE_D4, NOTE_E4,
+		        NOTE_G4, NOTE_G4, NOTE_G4, NOTE_E4, NOTE_D4, NOTE_C4, NOTE_D4,
+		        NOTE_E4, NOTE_E4, NOTE_E4, NOTE_D4, NOTE_E4, NOTE_G4, NOTE_A4, NOTE_G4, NOTE_E4, NOTE_C4,
+
+		        NOTE_C4, NOTE_D4, NOTE_C4, NOTE_C4, NOTE_B3, NOTE_A3
+  };
+
+// 3. 각 음표의 길이 배열 (1단위 = 빠른 박자, 4단위 = 길게 쉬기)
+uint32_t noteDurations_l[] = {
+    1, 1, 1, 1, 4,
+    1, 1, 1, 1, 1, 1, 4,
+    1, 1, 1, 1, 1, 1, 2, 1, 4,
+
+    1, 1, 1, 1, 4,
+    1, 1, 1, 1, 1, 1, 4,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 4,
+
+    1, 1, 1, 1, 2, 4
+};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -49,6 +107,8 @@ SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim2;
 
+UART_HandleTypeDef huart1;
+
 /* USER CODE BEGIN PV */
 
 /* USER CODE END PV */
@@ -59,9 +119,14 @@ static void MPU_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void SPI_Read(uint16_t address, void *buf, uint16_t len);
 uint8_t LAN9252_HW_Init(void);
+void togglepower(void);
+void estegg(void);
+void estlol(void);
+void ethercat_chip_check(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -110,6 +175,7 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
+	//bool status = 0;
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
@@ -135,10 +201,8 @@ int main(void)
   MX_GPIO_Init();
   MX_SPI1_Init();
   MX_TIM2_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  HAL_Delay(100);
-
-  //HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_3);
   /* USER CODE END 2 */
 
   /* Initialize leds */
@@ -167,55 +231,48 @@ int main(void)
 
   /* -- Sample board code to switch on leds ---- */
   BSP_LED_On(LED_GREEN);
-  BSP_LED_On(LED_BLUE);
+
   BSP_LED_On(LED_RED);
 
-  //------------------------------------------------------
-
-
-    // 1. 송신 버퍼 세팅: Fast Read(0x0B) + 주소(0x0050) + 더미(0x00) + 데이터 받을 빈 공간 4칸
-    uint8_t tx_buf[8] = {0x0B, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00};
-    uint8_t rx_buf[8] = {0};
-
-    // 2. CS 핀 Low (PE2)
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2, GPIO_PIN_RESET);
-
-    // 3. 🔥 질문자님이 성공하셨던 완벽한 양방향 한 방 쏘기!
-    HAL_SPI_TransmitReceive(&hspi1, tx_buf, rx_buf, 8, HAL_MAX_DELAY);
-
-    // 4. CS 핀 High (PE2)
-    HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2, GPIO_PIN_SET);
-
-    // 5. 앞의 4바이트(명령어 구간) 쓰레기값 무시하고 뒤의 4바이트 조립
-    volatile uint32_t verify_id = rx_buf[4] | (rx_buf[5] << 8) | (rx_buf[6] << 16) | (rx_buf[7] << 24);
-    (void)verify_id;
-
-    // 👈 여기에 중단점 걸기!
-    __NOP();
-  //------------------------------------------------------
-    if(verify_id != 0x92520001)
-    {
-    	while(1){
-    		HAL_Delay(100);
-    		BSP_LED_On(LED_RED);
-    		HAL_Delay(100);
-    		BSP_LED_Off(LED_RED);
-    	}
-    }
-
+  ethercat_chip_check();
   ecat_slv_init(&config);
 
+
+
+  BSP_LED_On(LED_BLUE);
   /* USER CODE END BSP */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  //HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
+  static uint8_t old_speed = 255;
+  static uint8_t old_dir = 255;
+  estegg();
+  HAL_Delay(1000);
+
   while (1)
   {
+
     ecat_slv();
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+    if (ESCvar.ALstatus == ESC_OP) {
+              // TwinCAT에서 보낸 값이 이전과 다를 때(변경되었을 때)만 UART 전송!
+              if (Rb.target_speed[0] != old_speed || Rb.direction[0] != old_dir) {
+                  TMC2209_Update(&huart1, 0x00, Rb.target_speed[0], Rb.direction[0]);
+                  // 현재 값을 기억
+                  old_speed = Rb.target_speed[0];
+                  old_dir = Rb.direction[0];
+
+                  togglepower();
+              }
+          } else {
+              // 에러나 통신 끊김 시 정지 (이것도 중복 전송 방지)
+//              if (old_speed != 0) {
+//                  TMC2209_Update(&huart1, 0x00, 0, 0);
+//                  old_speed = 0;
+//              }
+          }
   }
   /* USER CODE END 3 */
 }
@@ -380,6 +437,54 @@ static void MX_TIM2_Init(void)
 }
 
 /**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_HalfDuplex_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -404,6 +509,9 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(Ecat_RST_GPIO_Port, Ecat_RST_Pin, GPIO_PIN_SET);
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(TMC_EN_GPIO_Port, TMC_EN_Pin, GPIO_PIN_SET);
+
   /*Configure GPIO pin : Ecat_CS_Pin */
   GPIO_InitStruct.Pin = Ecat_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
@@ -424,12 +532,108 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Ecat_INT_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : TMC_EN_Pin */
+  GPIO_InitStruct.Pin = TMC_EN_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(TMC_EN_GPIO_Port, &GPIO_InitStruct);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+void ethercat_chip_check()
+{
+  //---------------------LAN9252 ID Check---------------------------------
+  // 1. 송신 버퍼 세팅: Fast Read(0x0B) + 주소(0x0050) + 더미(0x00) + 데이터 받을 빈 공간 4칸
+  uint8_t tx_buf[8] = {0x0B, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00};
+  uint8_t rx_buf[8] = {0};
+
+  // 2. CS 핀 Low (PE2)
+  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2, GPIO_PIN_RESET);
+
+  HAL_SPI_TransmitReceive(&hspi1, tx_buf, rx_buf, 8, HAL_MAX_DELAY);
+  // 4. CS 핀 High (PE2)
+  HAL_GPIO_WritePin(GPIOE, GPIO_PIN_2, GPIO_PIN_SET);
+  // 5. 앞의 4바이트(명령어 구간) 쓰레기값 무시하고 뒤의 4바이트 조립
+  volatile uint32_t verify_id = rx_buf[4] | (rx_buf[5] << 8) | (rx_buf[6] << 16) | (rx_buf[7] << 24);
+
+  (void)verify_id;
+
+  __NOP();
+  //------------------------------------------------------
+  if(verify_id != 0x92520001)
+  {
+  	while(1){
+  		HAL_Delay(100);
+  		BSP_LED_On(LED_RED);
+  		HAL_Delay(100);
+  		BSP_LED_Off(LED_RED);
+  	}
+  }
+}
+
+void togglepower()
+{
+    if((HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_SET)){
+    	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
+    	while (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_SET);
+    }
+}
+
+void estegg()
+{
+/* ========================================================== */
+  /* 🎵 스텝 모터 연주 프로그램: "비행기 (Airplane)" 🎵 */
+  /* ========================================================== */
+  int totalNotes = sizeof(melody) / sizeof(melody[0]);
+
+  // 4. 연주 시작 전 1초 대기
+  HAL_Delay(1000);
+
+  // 5. 악보를 읽으며 연주 시작!
+  for (int i = 0; i < totalNotes; i++) {
+      // 음표의 속도로 모터 회전 (소리 내기)
+      TMC2209_WriteRegister(&huart1, 0x00, 0x22, melody[i]);
+
+      // 음표의 길이만큼 유지하되, 음과 음 사이를 구분하기 위해 끝부분 50ms는 뺍니다.
+      HAL_Delay(noteDurations[i] - 50);
+
+      // ⭐️ 핵심: 음이 뭉개지지 않도록(스타카토 느낌) 아주 잠깐 모터를 세워줍니다.
+      TMC2209_WriteRegister(&huart1, 0x00, 0x22, REST);
+      HAL_Delay(50);
+  }
+
+  // 6. 연주가 끝나면 모터 정지
+  TMC2209_WriteRegister(&huart1, 0x00, 0x22, 0);
+}
+
+void estlol()
+{
+	int totalNotes = sizeof(melody_l) / sizeof(melody_l[0]);
+
+	  HAL_Delay(1000);
+
+	  // 3. 연주 시작!
+	  for (int i = 0; i < totalNotes; i++) {
+	      uint32_t duration_ms = noteDurations[i] * 160;
+
+	      // 조금 더 부드럽게 이어지도록 연주 비율을 60%로 늘렸습니다.
+	      uint32_t play_time = duration_ms * 0.6;
+	      uint32_t rest_time = duration_ms - play_time;
+
+	      TMC2209_WriteRegister(&huart1, 0x00, 0x22, melody_l[i]);
+	      HAL_Delay(play_time);
+
+	      TMC2209_WriteRegister(&huart1, 0x00, 0x22, REST);
+	      HAL_Delay(rest_time);
+	  }
+
+	  TMC2209_WriteRegister(&huart1, 0x00, 0x22, 0);
+}
 
 /* USER CODE END 4 */
 
