@@ -17,13 +17,14 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-//#include "main.h"
+#include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "ecat_slv.h"
 #include "utypes.h"
 #include "TMC2209_usart.h"
+#include "global.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -36,13 +37,14 @@
 #define REST   0       // 쉼표 (정지)
 
 #define NOTE_A3 78000
-  #define NOTE_B3 88000
-  #define NOTE_C4 93000
-  #define NOTE_D4 105000
-  #define NOTE_E4 118000
-  #define NOTE_G4 140000
-  #define NOTE_A4 157000
-  #define REST    0
+#define NOTE_B3 88000
+#define NOTE_C4 93000
+#define NOTE_D4 105000
+#define NOTE_E4 118000
+#define NOTE_G4 140000
+#define NOTE_A4 157000
+#define REST    0
+#define DRV_ERROR_MASK 0xFE // 이 비트들 중 1개라도 1인 경우 구동에 문제가 생기는 하드웨어적 오류임
 
 // 2. 비행기 계명 배열 (미-레-도-레-미-미-미...)
 uint32_t melody[] = {
@@ -61,31 +63,6 @@ uint32_t noteDurations[] = {
     400, 400, 400, 400, 1200
 };
 
-// 2. Legends Never Die 하이라이트 전체 악보
-  uint32_t melody_l[] = {
-		  NOTE_E4, NOTE_E4, NOTE_E4, NOTE_D4, NOTE_E4,
-		        NOTE_G4, NOTE_G4, NOTE_G4, NOTE_E4, NOTE_D4, NOTE_C4, NOTE_D4,
-		        NOTE_E4, NOTE_E4, NOTE_E4, NOTE_D4, NOTE_E4, NOTE_G4, NOTE_A4, NOTE_G4, NOTE_E4,
-
-		        NOTE_E4, NOTE_E4, NOTE_E4, NOTE_D4, NOTE_E4,
-		        NOTE_G4, NOTE_G4, NOTE_G4, NOTE_E4, NOTE_D4, NOTE_C4, NOTE_D4,
-		        NOTE_E4, NOTE_E4, NOTE_E4, NOTE_D4, NOTE_E4, NOTE_G4, NOTE_A4, NOTE_G4, NOTE_E4, NOTE_C4,
-
-		        NOTE_C4, NOTE_D4, NOTE_C4, NOTE_C4, NOTE_B3, NOTE_A3
-  };
-
-// 3. 각 음표의 길이 배열 (1단위 = 빠른 박자, 4단위 = 길게 쉬기)
-uint32_t noteDurations_l[] = {
-    1, 1, 1, 1, 4,
-    1, 1, 1, 1, 1, 1, 4,
-    1, 1, 1, 1, 1, 1, 2, 1, 4,
-
-    1, 1, 1, 1, 4,
-    1, 1, 1, 1, 1, 1, 4,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 4,
-
-    1, 1, 1, 1, 2, 4
-};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -105,11 +82,33 @@ __IO uint32_t BspButtonState = BUTTON_RELEASED;
 
 SPI_HandleTypeDef hspi1;
 
+TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+DMA_HandleTypeDef hdma_tim1_ch1;
 
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
+uint32_t g_StatusWord[MAX_AXIS] = {0x250, 0x250, 0x250, 0x250}; // 축별 상태정보 변수
+bool g_is_homed[MAX_AXIS] = {false, false, false, false}; // 축별 홈 포지션 도착 정보 변수
+uint32_t g_drv_status[MAX_AXIS] = {0x0, }; // 축별 제어 드라이버 상태 레지스터 32비트 정보
+int32_t g_Actual_Pos[MAX_AXIS] = {0, }; // 축별 현위치
+
+//레지스터 32비트 종류
+uint16_t g_motcur[MAX_AXIS] = {0, }; // 축별 모터 전류 값
+bool g_stealthMode[MAX_AXIS] = {NULL, NULL, NULL, NULL};
+bool g_hwErr[MAX_AXIS] = {0, };
+bool gw_overtemp_pre[MAX_AXIS] = {false, false, false, false};
+bool gw_overtemp[MAX_AXIS] 	   = {false, false, false, false};
+bool gw_overtemp_120[MAX_AXIS] = {false, false, false, false};
+bool gw_overtemp_143[MAX_AXIS] = {false, false, false, false};
+bool gw_overtemp_150[MAX_AXIS] = {false, false, false, false};
+bool gw_overtemp_157[MAX_AXIS] = {false, false, false, false};
+bool gw_shortGND_A[MAX_AXIS] = {false, false, false, false};
+bool gw_shortGND_B[MAX_AXIS] = {false, false, false, false};
+bool gw_shortMos[MAX_AXIS] 	 = {false, false, false, false};
+bool gw_openload_A[MAX_AXIS] = {false, false, false, false};
+bool gw_openload_B[MAX_AXIS] = {false, false, false, false};
 
 /* USER CODE END PV */
 
@@ -117,16 +116,23 @@ UART_HandleTypeDef huart1;
 void SystemClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 void SPI_Read(uint16_t address, void *buf, uint16_t len);
 uint8_t LAN9252_HW_Init(void);
 void togglepower(void);
 void estegg(void);
-void estlol(void);
 void ethercat_chip_check(void);
+void TMC_statecheck(void);
+extern void servo_on(int axis);
+extern void servo_off(int axis);
+extern void ec_valinit();
+extern uint32_t CalcMotion(int axis);
+extern uint32_t motCtrl();
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -140,13 +146,16 @@ void cb_get_inputs(void) {
     Wb.actual_pos[3] = 0;//Motor4_Get_Encoder_Count();
 
     // 모터 드라이버의 상태를 읽어서 상태 워드 업데이트
-    Wb.status_word = 0;//Motor_Get_System_Status();
+    Wb.status_word[0] = 0;//Motor_Get_System_Status();
+    Wb.status_word[1] = 0;//Motor_Get_System_Status();
+    Wb.status_word[2] = 0;//Motor_Get_System_Status();
+    Wb.status_word[3] = 0;//Motor_Get_System_Status();
 }
 
 // 2. 마스터에서 온 데이터 적용 (RxPDO)
 void cb_set_outputs(void) {
     // 마스터가 새로운 목표 위치나 제어 명령을 보냈으므로, 이를 모터 제어 변수에 반영합니다.
-    if (Rb.control_word == 1) { // 예: Enable 명령이 들어왔다면
+    if (Rb.control_word[0] == 1) { // 예: Enable 명령이 들어왔다면
         for(int i = 0; i < 4; i++) {
 //            Motor_Set_Target_Position(i, Rb.target_pos[i]);
 //            Motor_Set_Speed(i, Rb.target_speed[i]);
@@ -175,7 +184,6 @@ int main(void)
 
   /* USER CODE BEGIN 1 */
 
-	//bool status = 0;
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
@@ -199,9 +207,11 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI1_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   /* USER CODE END 2 */
 
@@ -226,53 +236,84 @@ int main(void)
 
   /* USER CODE BEGIN BSP */
 
-  /* -- Sample board code to send message over COM1 port ---- */
-  printf("Welcome to STM32 world !\n\r");
-
   /* -- Sample board code to switch on leds ---- */
-  BSP_LED_On(LED_GREEN);
+
+  ethercat_chip_check();
 
   BSP_LED_On(LED_RED);
 
-  ethercat_chip_check();
   ecat_slv_init(&config);
 
-
-
   BSP_LED_On(LED_BLUE);
+
+  HAL_TIM_Base_Start_IT(&htim2); // ethercat timer init with interrupt
+
+  ec_valinit();
+  BSP_LED_On(LED_GREEN);
   /* USER CODE END BSP */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  static uint8_t old_speed = 255;
-  static uint8_t old_dir = 255;
-  estegg();
-  HAL_Delay(1000);
+  //servo_on();
+//  static uint8_t old_speed = 255;
+//  static uint8_t old_dir = 255;
+  //estegg();
+  //HAL_Delay(1000);
 
+  //motCtrl();
+  //HAL_Delay(1000);
   while (1)
   {
 
-    ecat_slv();
+    //ecat_slv();
+	  TMC_statecheck();
+	  for(int i = 0; i < MAX_AXIS; i++){
+		  if(g_hwErr[i]){
+			  g_StatusWord[i] |= (1 << 3); // 3번 비트 1 (Fault bit True)
+			  servo_off(i);
+			  continue; // 에러 난 축은 아래 제어 로직 건너뜀
+		  }
+
+		  // 2. 해당 축의 Control Word 분석 및 상태 머신 구동
+		  uint32_t ctrl = Rb.control_word[i];
+
+		  if (ctrl & (1 << 11)) {
+		      // 해당 축만 강제 호밍
+		      g_Actual_Pos[i] = 0; // Feedback position ==> pwm timer counter로 확인
+		      g_is_homed[i] = true;
+		  }
+
+		  if ((ctrl & 0x000F) == 0x000F) {
+		      // 해당 축만 서보 ON
+		      Wb.status_word[i] |= 0x0237; // Operation Enabled
+		      CalcMotion(i); // 해당 축만 펄스 계산 == 구현 필요
+		  } else {
+		      // 해당 축만 서보 OFF
+		      servo_off(i);
+		  }
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-    if (ESCvar.ALstatus == ESC_OP) {
-              // TwinCAT에서 보낸 값이 이전과 다를 때(변경되었을 때)만 UART 전송!
-              if (Rb.target_speed[0] != old_speed || Rb.direction[0] != old_dir) {
-                  TMC2209_Update(&huart1, 0x00, Rb.target_speed[0], Rb.direction[0]);
-                  // 현재 값을 기억
-                  old_speed = Rb.target_speed[0];
-                  old_dir = Rb.direction[0];
 
-                  togglepower();
-              }
-          } else {
-              // 에러나 통신 끊김 시 정지 (이것도 중복 전송 방지)
-//              if (old_speed != 0) {
-//                  TMC2209_Update(&huart1, 0x00, 0, 0);
-//                  old_speed = 0;
-//              }
-          }
+
+//    if (ESCvar.ALstatus == ESC_OP) {												// OP모드 진입 시에만 작동
+//        if (Rb.target_speed[0] != old_speed) {										// TwinCAT에서 보낸 값이 이전과 다를 때(변경되었을 때)만 UART 전송
+//        	TMC2209_WriteRegister(&huart1, 0x00, 0x22, Rb.target_speed[0]);
+//            //TMC2209_Update(&huart1, 0x00, Rb.target_speed[0], Rb.direction[0]);
+//            // 현재 값을 기억
+//            old_speed = Rb.target_speed[0];
+//            //old_dir = (Rb.control_word << 16); 방향은 목표 위치나 목표 속도를 기준으로 결정
+//        }
+//        togglepower(); 																// OP 시에는 버튼으로 수동 조작 가능
+//    }
+//    else {																			// OP 가 아닌 경우
+//        if (old_speed != 0) {														// 에러나 통신 끊김 시 정지 (이것도 중복 전송 방지)
+//        	//TMC2209_WriteRegister(&huart1, 0x00, 0x22, 0);						// 정지 전류 => 속도 0로 설정
+//        	servo_off(); 															// 통신 끊김 시 모터 전원 내림
+//            old_speed = 0;															// 중복 방지를 위해 old_speed 값 변경
+//        }
+//    }
   }
   /* USER CODE END 3 */
 }
@@ -385,6 +426,86 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 0;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 11999;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
+  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
+  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
+  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
+  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
+  sBreakDeadTimeConfig.DeadTime = 0;
+  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
+  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
+  sBreakDeadTimeConfig.BreakFilter = 0;
+  sBreakDeadTimeConfig.Break2State = TIM_BREAK2_DISABLE;
+  sBreakDeadTimeConfig.Break2Polarity = TIM_BREAK2POLARITY_HIGH;
+  sBreakDeadTimeConfig.Break2Filter = 0;
+  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
+  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
+  HAL_TIM_MspPostInit(&htim1);
+
+}
+
+/**
   * @brief TIM2 Initialization Function
   * @param None
   * @retval None
@@ -403,11 +524,11 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
+  htim2.Init.Prescaler = 239;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4294967295;
+  htim2.Init.Period = 999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
   if (HAL_TIM_IC_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
@@ -481,6 +602,22 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
 
 }
 
@@ -584,6 +721,35 @@ void togglepower()
     }
 }
 
+//EtherCAT Timer - 1ms
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+    if (htim->Instance == TIM2)
+    {
+    	static int cnt = 0;
+    	cnt++;
+        // 동작 확인을 위해 보드의 LED를 토글해볼 수 있습니다.
+        //cnt%2 == 0 ? BSP_LED_On(LED_RED) : BSP_LED_Off(LED_RED);
+    	ecat_slv();
+    }
+}
+
+//Read TMC Status Register
+void TMC_statecheck()
+{
+	for (int i = 0; i < 4; i++) {
+	    // UART로 DRV_STATUS를 천천히 읽어옴
+	    uint32_t drv_status = TMC2209_ReadRegister(&huart1, i, 0x6F);
+	    // TMC2208 Chip Error check
+	    if ((drv_status & DRV_ERROR_MASK) != 0){
+	    	g_hwErr[i] = true; // 비정상 ==> 비정상인 경우 해결될때까지 모터 구동 대기 함수 필요
+	    }
+//	    else {
+//	    	//g_hwErr[i] = false; // 정상화 되면 복귀 지양
+//	    }
+	}
+}
+
 void estegg()
 {
 /* ========================================================== */
@@ -610,31 +776,6 @@ void estegg()
   // 6. 연주가 끝나면 모터 정지
   TMC2209_WriteRegister(&huart1, 0x00, 0x22, 0);
 }
-
-void estlol()
-{
-	int totalNotes = sizeof(melody_l) / sizeof(melody_l[0]);
-
-	  HAL_Delay(1000);
-
-	  // 3. 연주 시작!
-	  for (int i = 0; i < totalNotes; i++) {
-	      uint32_t duration_ms = noteDurations[i] * 160;
-
-	      // 조금 더 부드럽게 이어지도록 연주 비율을 60%로 늘렸습니다.
-	      uint32_t play_time = duration_ms * 0.6;
-	      uint32_t rest_time = duration_ms - play_time;
-
-	      TMC2209_WriteRegister(&huart1, 0x00, 0x22, melody_l[i]);
-	      HAL_Delay(play_time);
-
-	      TMC2209_WriteRegister(&huart1, 0x00, 0x22, REST);
-	      HAL_Delay(rest_time);
-	  }
-
-	  TMC2209_WriteRegister(&huart1, 0x00, 0x22, 0);
-}
-
 /* USER CODE END 4 */
 
  /* MPU Configuration */
