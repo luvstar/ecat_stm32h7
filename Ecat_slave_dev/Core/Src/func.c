@@ -11,16 +11,19 @@
 
 
 int32_t g_MaxSpeed[MAX_AXIS] = {0, };
-
-
+GPIO_TypeDef* g_MotPORT[MAX_AXIS] = {GPIOB, GPIOB, GPIOB, GPIOB};
+uint16_t g_MotPIN[MAX_AXIS] = {GPIO_PIN_2, 0, };
 void servo_on(int axis)
 {
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_RESET);
+	if(axis > 4)
+		return;
+
+	HAL_GPIO_WritePin(g_MotPORT[axis], g_MotPIN[axis], GPIO_PIN_RESET);
 }
 
 void servo_off(int axis)
 {
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_2, GPIO_PIN_SET);
+	HAL_GPIO_WritePin(g_MotPORT[axis], g_MotPIN[axis], GPIO_PIN_SET);
 }
 
 uint32_t motCtrl(int axis){ //모터 테스트 용
