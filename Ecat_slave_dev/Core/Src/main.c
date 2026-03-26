@@ -133,6 +133,7 @@ extern void servo_off(int axis);
 extern void ec_valinit();
 extern uint32_t CalcMotion(int axis);
 extern uint32_t motCtrl();
+extern void CiA402_StateMachine(int axis);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -155,13 +156,30 @@ void cb_get_inputs(void) {
 // 2. 마스터에서 온 데이터 적용 (RxPDO)
 void cb_set_outputs(void) {
     // 마스터가 새로운 목표 위치나 제어 명령을 보냈으므로, 이를 모터 제어 변수에 반영합니다.
-    if (Rb.control_word[0] == 1) { // 예: Enable 명령이 들어왔다면
-        for(int i = 0; i < 4; i++) {
-//            Motor_Set_Target_Position(i, Rb.target_pos[i]);
-//            Motor_Set_Speed(i, Rb.target_speed[i]);
-//            Motor_Set_Direction(i, Rb.direction[i]);
+//    if (Rb.control_word[0] == 1) { // 예: Enable 명령이 들어왔다면
+//        for(int i = 0; i < 4; i++) {
+////            Motor_Set_Target_Position(i, Rb.target_pos[i]);
+////            Motor_Set_Speed(i, Rb.target_speed[i]);
+////            Motor_Set_Direction(i, Rb.direction[i]);
+//        }
+//    }
+    if (ESCvar.ALstatus == ESC_AL_STATUS_OP) {
+
+            // 4개 축에 대해 CiA 402 상태 머신 처리 (마스터 명령 반영)
+            for (int axis = 0; axis < 4; axis++) {
+                CiA402_StateMachine(axis);
+
+                // (만약 서보가 ON 상태라면 여기서 펄스 가감속도 연산)
+                if ((Wb.status_word[axis] & 0x0237) == 0x0237) {
+                    CalcMotion(axis);
+                }
+            }
+        } else {
+            // OP 상태가 아니면 무조건 모터 정지 (안전 규격 준수)
+            for (int axis = 0; axis < 4; axis++) {
+                servo_off(axis);
+            }
         }
-    }
 }
 
 // 3. SOES 스택 설정 구조체 연결

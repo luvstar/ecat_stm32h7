@@ -9,7 +9,7 @@
 #define INC_GLOBAL_H_
 
 #define MAX_AXIS 4
-
+#define ESC_AL_STATUS_OP	8
 //현재 모터 위치(보낸 펄스 수)
 extern int32_t g_Actual_Pos[MAX_AXIS];
 

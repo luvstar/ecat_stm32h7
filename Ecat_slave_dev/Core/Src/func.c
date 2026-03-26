@@ -97,6 +97,81 @@ uint32_t CalcMotion(int axis)
 	return pulse;
 }
 
+// ==========================================================
+// ⭐️ CiA 402 State Machine Parser (1ms ISR 내부에서 호출)
+// ==========================================================
+void CiA402_StateMachine(uint8_t axis) {
+    uint32_t cw = Rb.control_word[axis];  // 마스터가 내린 명령 (Target)
+    uint32_t sw = Wb.status_word[axis];   // 슬레이브가 보고할 현재 상태 (Actual)
+
+    // ------------------------------------------------------
+    // [관문 1] 하드웨어 에러(Fault) 상태 처리 (최우선 순위)
+    // ------------------------------------------------------
+    if (g_hwErr[axis] == true) {
+        servo_off(axis);                      // 1. 즉시 모터 끄기 (물리적 차단)
+        Wb.status_word[axis] |= (1 << 3);     // 2. Status Word Bit 3 (Fault) ON
+        return;                               // 3. 아래 제어 로직 무시하고 함수 탈출
+    }
+
+    // 만약 에러 상태(Fault)에 빠져있는데, 마스터가 Bit 7 (Fault Reset)을 0->1로 쳤다면?
+    if (sw & (1 << 3)) {
+        if ((cw & (1 << 7)) != 0) {
+            // 알람 해제 조건 충족! (TwinCAT에서 Reset 버튼 누름)
+            Wb.status_word[axis] = 0x0250;    // 에러 비트 지우고 'Switch On Disabled'로 초기화
+        }
+        servo_off(axis); // 에러가 완전히 풀릴 때까지 물리적 구동 절대 금지
+        return;
+    }
+
+    // ------------------------------------------------------
+    // [관문 2] CiA 402 상태 전이 (하위 4비트 마스킹 검사)
+    // 마스터의 Control Word(cw) 명령에 맞춰 Status Word(sw)를 응답
+    // ------------------------------------------------------
+    switch (cw & 0x000F) { // Bit 0~3만 추출해서 스위치문으로 검사
+
+        case 0x0000: // [Disable Voltage 명령]
+        case 0x0002: // [Quick Stop 명령]
+            servo_off(axis);
+            Wb.status_word[axis] = 0x0250; // 응답: Switch On Disabled
+            break;
+
+        case 0x0006: // [Shutdown 명령] - 서보 켜기 1단계
+            servo_off(axis);
+            Wb.status_word[axis] = 0x0231; // 응답: Ready to Switch On
+            break;
+
+        case 0x0007: // [Switch On 명령] - 서보 켜기 2단계 (또는 Disable Operation)
+            servo_off(axis);
+            Wb.status_word[axis] = 0x0233; // 응답: Switched On
+            break;
+
+        case 0x000F: // ⭐️ [Enable Operation 명령] - 최종 서보 ON 단계!
+            servo_on(axis);
+            Wb.status_word[axis] = 0x0237; // 응답: Operation Enabled
+
+            // 이 상태에서만 목표 위치 연산 및 펄스 출력을 허용합니다.
+            // CalcMotion(axis); // To do
+            break;
+
+        default:
+            // 표준에 정의되지 않은 비정상 비트 조합이 들어온 경우 안전하게 차단
+            servo_off(axis);
+            Wb.status_word[axis] = 0x0250;
+            break;
+    }
+
+    // ------------------------------------------------------
+    // [관문 3] 커스텀 제어 비트 처리 (예: 홈 강제 초기화)
+    // ------------------------------------------------------
+    if ((Wb.status_word[axis] & 0x0237) == 0x0237) { // 서보가 정상적으로 켜진 상태에서만 허용
+        if (cw & (1 << 11)) { // Custom Bit 11 (Force Homing)
+            // 현재 위치 변수를 0으로 리셋 (하드웨어 타이머 카운터 리셋 함수 호출)
+            //Reset_Actual_Position(axis); //  To do
+            g_is_homed[axis] = true;
+        }
+    }
+}
+
 void ec_valinit()
 {
 	for(int i = 0; i < MAX_AXIS; i++){
