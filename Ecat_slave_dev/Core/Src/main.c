@@ -44,7 +44,7 @@
 #define NOTE_G4 140000
 #define NOTE_A4 157000
 #define REST    0
-#define DRV_ERROR_MASK 0xFE // 이 비트들 중 1개라도 1인 경우 구동에 문제가 생기는 하드웨어적 오류임
+#define DRV_ERROR_MASK 0xFE0 // 이 비트들 중 1개라도 1인 경우 구동에 문제가 생기는 하드웨어적 오류임
 
 // 2. 비행기 계명 배열 (미-레-도-레-미-미-미...)
 uint32_t melody[] = {
@@ -84,7 +84,6 @@ SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
-DMA_HandleTypeDef hdma_tim1_ch1;
 
 UART_HandleTypeDef huart1;
 
@@ -116,7 +115,6 @@ bool gw_openload_B[MAX_AXIS] = {false, false, false, false};
 void SystemClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
@@ -131,7 +129,7 @@ void TMC_statecheck(void);
 extern void servo_on(int axis);
 extern void servo_off(int axis);
 extern void ec_valinit();
-extern uint32_t CalcMotion(int axis);
+extern void CalcMotion(int axis);
 extern uint32_t motCtrl();
 extern void CiA402_StateMachine(int axis);
 /* USER CODE END PFP */
@@ -141,28 +139,16 @@ extern void CiA402_StateMachine(int axis);
 // 1. 마스터로 보낼 데이터 업데이트 (TxPDO)
 void cb_get_inputs(void) {
     // 예: 4축 모터의 현재 엔코더 위치를 읽어와서 Wb 구조체에 넣습니다.
-    Wb.actual_pos[0] = 0;//Motor1_Get_Encoder_Count();
-    Wb.actual_pos[1] = 0;//Motor2_Get_Encoder_Count();
-    Wb.actual_pos[2] = 0;//Motor3_Get_Encoder_Count();
-    Wb.actual_pos[3] = 0;//Motor4_Get_Encoder_Count();
-
-    // 모터 드라이버의 상태를 읽어서 상태 워드 업데이트
-    Wb.status_word[0] = 0;//Motor_Get_System_Status();
-    Wb.status_word[1] = 0;//Motor_Get_System_Status();
-    Wb.status_word[2] = 0;//Motor_Get_System_Status();
-    Wb.status_word[3] = 0;//Motor_Get_System_Status();
+	for (int axis = 0; axis < MAX_AXIS; axis++){
+		Wb.actual_pos[axis] = g_Actual_Pos[axis];//Motor1_Get_Encoder_Count();
+		// 모터 드라이버의 상태를 읽어서 상태 워드 업데이트
+		Wb.status_word[axis] = g_StatusWord[axis];//Motor_Get_System_Status();
+	}
 }
 
 // 2. 마스터에서 온 데이터 적용 (RxPDO)
 void cb_set_outputs(void) {
-    // 마스터가 새로운 목표 위치나 제어 명령을 보냈으므로, 이를 모터 제어 변수에 반영합니다.
-//    if (Rb.control_word[0] == 1) { // 예: Enable 명령이 들어왔다면
-//        for(int i = 0; i < 4; i++) {
-////            Motor_Set_Target_Position(i, Rb.target_pos[i]);
-////            Motor_Set_Speed(i, Rb.target_speed[i]);
-////            Motor_Set_Direction(i, Rb.direction[i]);
-//        }
-//    }
+
     if (ESCvar.ALstatus == ESC_AL_STATUS_OP) {
 
             // 4개 축에 대해 CiA 402 상태 머신 처리 (마스터 명령 반영)
@@ -225,7 +211,6 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_DMA_Init();
   MX_SPI1_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
@@ -255,6 +240,7 @@ int main(void)
   /* USER CODE BEGIN BSP */
 
   /* -- Sample board code to switch on leds ---- */
+  ec_valinit();
 
   ethercat_chip_check();
 
@@ -265,8 +251,8 @@ int main(void)
   BSP_LED_On(LED_BLUE);
 
   HAL_TIM_Base_Start_IT(&htim2); // ethercat timer init with interrupt
+  HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); // PWM Timer init
 
-  ec_valinit();
   BSP_LED_On(LED_GREEN);
   /* USER CODE END BSP */
 
@@ -283,55 +269,12 @@ int main(void)
   while (1)
   {
 
-    //ecat_slv();
 	  TMC_statecheck();
-	  for(int i = 0; i < MAX_AXIS; i++){
-		  if(g_hwErr[i]){
-			  g_StatusWord[i] |= (1 << 3); // 3번 비트 1 (Fault bit True)
-			  servo_off(i);
-			  continue; // 에러 난 축은 아래 제어 로직 건너뜀
-		  }
-
-		  // 2. 해당 축의 Control Word 분석 및 상태 머신 구동
-		  uint32_t ctrl = Rb.control_word[i];
-
-		  if (ctrl & (1 << 11)) {
-		      // 해당 축만 강제 호밍
-		      g_Actual_Pos[i] = 0; // Feedback position ==> pwm timer counter로 확인
-		      g_is_homed[i] = true;
-		  }
-
-		  if ((ctrl & 0x000F) == 0x000F) {
-		      // 해당 축만 서보 ON
-		      Wb.status_word[i] |= 0x0237; // Operation Enabled
-		      CalcMotion(i); // 해당 축만 펄스 계산 == 구현 필요
-		  } else {
-		      // 해당 축만 서보 OFF
-		      servo_off(i);
-		  }
-	  }
+	  HAL_Delay(10);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
 
-
-//    if (ESCvar.ALstatus == ESC_OP) {												// OP모드 진입 시에만 작동
-//        if (Rb.target_speed[0] != old_speed) {										// TwinCAT에서 보낸 값이 이전과 다를 때(변경되었을 때)만 UART 전송
-//        	TMC2209_WriteRegister(&huart1, 0x00, 0x22, Rb.target_speed[0]);
-//            //TMC2209_Update(&huart1, 0x00, Rb.target_speed[0], Rb.direction[0]);
-//            // 현재 값을 기억
-//            old_speed = Rb.target_speed[0];
-//            //old_dir = (Rb.control_word << 16); 방향은 목표 위치나 목표 속도를 기준으로 결정
-//        }
-//        togglepower(); 																// OP 시에는 버튼으로 수동 조작 가능
-//    }
-//    else {																			// OP 가 아닌 경우
-//        if (old_speed != 0) {														// 에러나 통신 끊김 시 정지 (이것도 중복 전송 방지)
-//        	//TMC2209_WriteRegister(&huart1, 0x00, 0x22, 0);						// 정지 전류 => 속도 0로 설정
-//        	servo_off(); 															// 통신 끊김 시 모터 전원 내림
-//            old_speed = 0;															// 중복 방지를 위해 old_speed 값 변경
-//        }
-//    }
   }
   /* USER CODE END 3 */
 }
@@ -624,22 +567,6 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
-
-  /* DMA controller clock enable */
-  __HAL_RCC_DMA1_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA1_Stream0_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -665,6 +592,9 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_WritePin(Ecat_RST_GPIO_Port, Ecat_RST_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(TMC_DIR_GPIO_Port, TMC_DIR_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TMC_EN_GPIO_Port, TMC_EN_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : Ecat_CS_Pin */
@@ -687,12 +617,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(Ecat_INT_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : TMC_EN_Pin */
-  GPIO_InitStruct.Pin = TMC_EN_Pin;
+  /*Configure GPIO pins : TMC_DIR_Pin TMC_EN_Pin */
+  GPIO_InitStruct.Pin = TMC_DIR_Pin|TMC_EN_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(TMC_EN_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 

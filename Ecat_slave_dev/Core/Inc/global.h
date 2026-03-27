@@ -10,12 +10,14 @@
 
 #define MAX_AXIS 4
 #define ESC_AL_STATUS_OP	8
+#define TIM_CLOCK_FREQ  240000000
+
 //현재 모터 위치(보낸 펄스 수)
 extern int32_t g_Actual_Pos[MAX_AXIS];
-
 //모터 구동 최고 속도
 extern int32_t g_MaxSpeed[MAX_AXIS];
-
+extern int32_t g_current_speed[MAX_AXIS];
+extern int32_t g_current_accel[MAX_AXIS]; // S-Curve용 현재 가속도 상태
 //CiA402(0-15bit) + TMC2208 Register(16-31bit)
 extern uint32_t g_StatusWord[MAX_AXIS];
 
@@ -61,5 +63,11 @@ extern bool g_stealthMode[MAX_AXIS];
 
 //Motor GPIO
 extern GPIO_TypeDef* g_MotPORT[MAX_AXIS];
+extern GPIO_TypeDef* DIR_PORT[MAX_AXIS];
 extern uint16_t g_MotPIN[MAX_AXIS];
+extern uint16_t DIR_PIN[MAX_AXIS];
+extern TIM_TypeDef* motor_timers[MAX_AXIS];
+
+//Motor Position
+extern int32_t g_pos_accumulator[MAX_AXIS];
 #endif /* INC_GLOBAL_H_ */

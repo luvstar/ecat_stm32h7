@@ -68,8 +68,12 @@ extern UART_HandleTypeDef huart1;
 #define Ecat_RST_GPIO_Port GPIOE
 #define Ecat_INT_Pin GPIO_PIN_4
 #define Ecat_INT_GPIO_Port GPIOE
+#define TMC_DIR_Pin GPIO_PIN_1
+#define TMC_DIR_GPIO_Port GPIOB
 #define TMC_EN_Pin GPIO_PIN_2
 #define TMC_EN_GPIO_Port GPIOB
+#define TMC_STEP_Pin GPIO_PIN_8
+#define TMC_STEP_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 #define ESC_OP 	8
