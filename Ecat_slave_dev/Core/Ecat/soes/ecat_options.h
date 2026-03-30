@@ -1,84 +1,33 @@
-//#ifndef __ECAT_OPTIONS_H__
-//#define __ECAT_OPTIONS_H__
-//
-//#include "cc.h"
-//
-//#define USE_FOE          1
-//#define USE_EOE          0
-//
-//#define MBXSIZE          128
-//#define MBXSIZEBOOT      128
-//#define MBXBUFFERS       3
-//
-//#define MBX0_sma         0x1000
-//#define MBX0_sml         MBXSIZE
-//#define MBX0_sme         MBX0_sma+MBX0_sml-1
-//#define MBX0_smc         0x26
-//#define MBX1_sma         MBX0_sma+MBX0_sml
-//#define MBX1_sml         MBXSIZE
-//#define MBX1_sme         MBX1_sma+MBX1_sml-1
-//#define MBX1_smc         0x22
-//
-//#define MBX0_sma_b       0x1000
-//#define MBX0_sml_b       MBXSIZEBOOT
-//#define MBX0_sme_b       MBX0_sma_b+MBX0_sml_b-1
-//#define MBX0_smc_b       0x26
-//#define MBX1_sma_b       MBX0_sma_b+MBX0_sml_b
-//#define MBX1_sml_b       MBXSIZEBOOT
-//#define MBX1_sme_b       MBX1_sma_b+MBX1_sml_b-1
-//#define MBX1_smc_b       0x22
-//
-//#define SM2_sma          0x1100
-//#define SM2_smc          0x24
-//#define SM2_act          1
-//
-//#define SM3_sma          0x1280
-//#define SM3_smc          0x20
-//#define SM3_act          1
-//
-//#define MAX_RXPDO_SIZE   128
-//#define MAX_TXPDO_SIZE   128
-//
-//#define MAX_MAPPINGS_SM2 2
-//#define MAX_MAPPINGS_SM3 1
-//
-//#endif /* __ECAT_OPTIONS_H__ */
-
 #ifndef __ECAT_OPTIONS_H__
 #define __ECAT_OPTIONS_H__
 
 #include "cc.h"
 
-#define USE_FOE          1
-#define USE_EOE          0
-
+// ⭐️ 메일박스 설정
 #define MBXSIZE          128
 #define MBXSIZEBOOT      128
 #define MBXBUFFERS       3
-
 #define MBX0_sma         0x1000
-#define MBX0_sml         MBXSIZE
-#define MBX0_sme         MBX0_sma+MBX0_sml-1
+#define MBX0_sml         128
 #define MBX0_smc         0x26
-#define MBX1_sma         MBX0_sma+MBX0_sml
-#define MBX1_sml         MBXSIZE
-#define MBX1_sme         MBX1_sma+MBX1_sml-1
+#define MBX1_sma         0x1080
+#define MBX1_sml         128
 #define MBX1_smc         0x22
 
+// ⭐️ SyncManager 2 (Outputs) 설정
 #define SM2_sma          0x1100
 #define SM2_smc          0x24
 #define SM2_act          1
 
-// [수정됨] XML의 #x1200과 일치하도록 변경!
-#define SM3_sma          0x1200
+// ⭐️ SyncManager 3 (Inputs) 설정 - SM2(96바이트) 종료지점에 밀착
+#define SM3_sma          0x1220
 #define SM3_smc          0x20
 #define SM3_act          1
 
+// ⭐️ 매핑 엔트리 제한 확장 (32개 이상 수용)
+#define MAX_MAPPINGS_SM2 48
+#define MAX_MAPPINGS_SM3 24
 #define MAX_RXPDO_SIZE   128
 #define MAX_TXPDO_SIZE   128
-
-// [수정됨] 넉넉하게 32개로 늘려서 모든 매핑 항목을 소화하도록 변경!
-#define MAX_MAPPINGS_SM2 32
-#define MAX_MAPPINGS_SM3 32
 
 #endif /* __ECAT_OPTIONS_H__ */

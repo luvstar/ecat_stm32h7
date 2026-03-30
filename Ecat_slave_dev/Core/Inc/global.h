@@ -28,7 +28,7 @@ extern uint32_t g_drv_status[MAX_AXIS];
 extern bool g_is_homed[MAX_AXIS];
 
 //Hardware Error Flag for each Axis
-extern bool g_hwErr[MAX_AXIS];
+extern volatile bool g_hwErr[MAX_AXIS];
 
 //Warning that over pre-limit temp
 extern bool gw_overtemp_pre[MAX_AXIS];

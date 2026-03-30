@@ -112,7 +112,7 @@
 #endif
 
 #ifndef SM3_sma
-#define SM3_sma          0x1200
+#define SM3_sma          0x1220
 #endif
 
 #ifndef SM3_smc
@@ -123,16 +123,15 @@
 #define SM3_act          1
 #endif
 
-/* Max number of dynamically mapped objects in SM2. May be 0 to
-   disable dynamic processdata. */
+/* Max number of dynamically mapped objects in SM2. */
+// ⭐️ 수정: 4개 축의 PDO 엔트리(32개)를 수용할 수 있도록 기본값 확장
 #ifndef MAX_MAPPINGS_SM2
-#define MAX_MAPPINGS_SM2 32
+#define MAX_MAPPINGS_SM2 48
 #endif
 
-/* Max number of dynamically mapped objects in SM3. May be 0 to
-   disable dynamic processdata. */
+/* Max number of dynamically mapped objects in SM3. */
 #ifndef MAX_MAPPINGS_SM3
-#define MAX_MAPPINGS_SM3 32
+#define MAX_MAPPINGS_SM3 24
 #endif
 
 /* Max processdata size (outputs). Only used if MAX_MAPPINGS_SM2 is

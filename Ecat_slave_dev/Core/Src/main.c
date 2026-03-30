@@ -96,7 +96,7 @@ int32_t g_Actual_Pos[MAX_AXIS] = {0, }; // 축별 현위치
 //레지스터 32비트 종류
 uint16_t g_motcur[MAX_AXIS] = {0, }; // 축별 모터 전류 값
 bool g_stealthMode[MAX_AXIS] = {NULL, NULL, NULL, NULL};
-bool g_hwErr[MAX_AXIS] = {0, };
+volatile bool g_hwErr[MAX_AXIS] = {0, };
 bool gw_overtemp_pre[MAX_AXIS] = {false, false, false, false};
 bool gw_overtemp[MAX_AXIS] 	   = {false, false, false, false};
 bool gw_overtemp_120[MAX_AXIS] = {false, false, false, false};
@@ -138,30 +138,24 @@ extern void CiA402_StateMachine(int axis);
 /* USER CODE BEGIN 0 */
 // 1. 마스터로 보낼 데이터 업데이트 (TxPDO)
 void cb_get_inputs(void) {
-    // 예: 4축 모터의 현재 엔코더 위치를 읽어와서 Wb 구조체에 넣습니다.
 	for (int axis = 0; axis < MAX_AXIS; axis++){
-		Wb.actual_pos[axis] = g_Actual_Pos[axis];//Motor1_Get_Encoder_Count();
-		// 모터 드라이버의 상태를 읽어서 상태 워드 업데이트
-		Wb.status_word[axis] = g_StatusWord[axis];//Motor_Get_System_Status();
+		Wb.axis[axis].actual_pos = g_Actual_Pos[axis]; // ⭐️ 변경점
+		Wb.axis[axis].status_word = g_StatusWord[axis];// ⭐️ 변경점
+        Wb.axis[axis].error_code = 0;
 	}
 }
 
 // 2. 마스터에서 온 데이터 적용 (RxPDO)
 void cb_set_outputs(void) {
-
     if (ESCvar.ALstatus == ESC_AL_STATUS_OP) {
-
-            // 4개 축에 대해 CiA 402 상태 머신 처리 (마스터 명령 반영)
             for (int axis = 0; axis < 4; axis++) {
                 CiA402_StateMachine(axis);
-
-                // (만약 서보가 ON 상태라면 여기서 펄스 가감속도 연산)
-                if ((Wb.status_word[axis] & 0x0237) == 0x0237) {
+                // ⭐️ Wb 대신 내부 상태인 g_StatusWord를 확인
+                if ((g_StatusWord[axis] & 0x0237) == 0x0237) {
                     CalcMotion(axis);
                 }
             }
         } else {
-            // OP 상태가 아니면 무조건 모터 정지 (안전 규격 준수)
             for (int axis = 0; axis < 4; axis++) {
                 servo_off(axis);
             }
@@ -191,7 +185,7 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
-  MPU_Config();
+   MPU_Config();
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -250,8 +244,9 @@ int main(void)
 
   BSP_LED_On(LED_BLUE);
 
-  HAL_TIM_Base_Start_IT(&htim2); // ethercat timer init with interrupt
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); // PWM Timer init
+  HAL_TIM_Base_Start_IT(&htim2); // ethercat timer init with interrupt
+
 
   BSP_LED_On(LED_GREEN);
   /* USER CODE END BSP */
