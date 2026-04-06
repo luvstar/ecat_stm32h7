@@ -70,4 +70,5 @@ extern TIM_TypeDef* motor_timers[MAX_AXIS];
 
 //Motor Position
 extern int32_t g_pos_accumulator[MAX_AXIS];
+extern uint32_t DWT_GetTick();
 #endif /* INC_GLOBAL_H_ */

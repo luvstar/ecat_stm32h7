@@ -12,7 +12,7 @@
 #include "ecat_slv.h"
 #include "utypes.h"
 
-uint32_t motCtrl();
+uint32_t motCtrl(uint8_t axis);
 uint8_t setEcat();
 void servo_on(int axis);
 void servo_off(int axis);
@@ -25,4 +25,7 @@ void update_timer_pwm_freq(uint8_t axis, uint32_t output_speed_hz);
 void stop_pulse_generator(uint8_t axis);
 void Reset_Actual_Position(uint8_t axis);
 void Update_Actual_Position(uint8_t axis);
+void delay_us(uint32_t us);
+void DWT_Delay_Init(void);
+uint32_t DWT_GetTick(void);
 #endif /* INC_FUNC_H_ */

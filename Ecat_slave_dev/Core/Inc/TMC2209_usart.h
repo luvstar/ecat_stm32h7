@@ -21,7 +21,7 @@
 // =========================================================
 // 1. TMC2209 전용 CRC8 계산 함수
 // =========================================================
-uint8_t TMC2209_CalcCRC(uint8_t* datagram, uint8_t datagramLength);
+//static uint8_t TMC2209_CalcCRC(uint8_t* datagram, uint8_t datagramLength);
 
 // =========================================================
 // 2. 1선식 UART 레지스터 Write 함수

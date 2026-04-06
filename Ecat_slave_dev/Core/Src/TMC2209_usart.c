@@ -6,12 +6,16 @@
  */
 
 #include "TMC2209_usart.h"
+#include "func.h"
 
 // TMC2209 주요 레지스터 주소 (헤더 파일에 없다면 여기에 정의)
 #define TMC2209_REG_GCONF      0x00
 #define TMC2209_REG_IHOLD_IRUN 0x10
 #define TMC2209_REG_VACTUAL    0x22
 #define TMC2209_REG_CHOPCONF   0x6C
+
+
+
 
 // =========================================================
 // 1. TMC2209 전용 CRC8 계산 함수
@@ -116,41 +120,90 @@ void TMC2209_Update(UART_HandleTypeDef *huart, uint8_t motor_addr, uint8_t targe
 // =========================================================
 // [추가] 1선식 UART 레지스터 Read 함수 (가장 중요!)
 // =========================================================
+//uint32_t TMC2209_ReadRegister(UART_HandleTypeDef *huart, uint8_t motor_addr, uint8_t reg_addr) {
+//    uint8_t tx_datagram[4];
+//    uint8_t rx_datagram[8] = {0}; // 수신 버퍼
+//    uint32_t result = 0;
+//
+//    // 1. 읽기 명령 데이터그램 조립
+//    tx_datagram[0] = 0x05;                        // Sync Byte
+//    tx_datagram[1] = motor_addr;                  // Slave Address
+//    tx_datagram[2] = reg_addr & 0x7F;             // Register Address (MSB 0 = Read)
+//    tx_datagram[3] = TMC2209_CalcCRC(tx_datagram, 3); // CRC 계산
+//
+//    // 2. 송신 모드로 전환하여 데이터 발사
+//    HAL_HalfDuplex_EnableTransmitter(huart);
+//    HAL_UART_Transmit(huart, tx_datagram, 4, HAL_MAX_DELAY);
+//    // 3. 수신 모드 전환
+//    HAL_HalfDuplex_EnableReceiver(huart);
+//
+////    // ⭐️ [가장 중요] 전환 과정에서 발생한 노이즈 및 에러 플래그 강제 삭제!!
+////    // 이거 없으면 STM32가 에러 났다고 착각하고 수신을 거부합니다.
+//    __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
+//
+//    // 4. 수신 시도 및 결과 상태 저장
+//    HAL_StatusTypeDef status = HAL_UART_Receive(huart, rx_datagram, 8, 200);
+//
+//    // 5. 결과에 따른 디버깅 처리
+//    if (status == HAL_OK) {
+//        // 수신 성공! 데이터 조립
+//        result = (rx_datagram[3] << 24) | (rx_datagram[4] << 16) | (rx_datagram[5] << 8) | rx_datagram[6];
+//        return result;
+//    } else if (status == HAL_TIMEOUT) {
+//        // 모터가 대답을 안 함 (단선, 주소 불일치, 동기화 안됨 등)
+//        return 0xEEEEEEEE;
+//    } else {
+//        // STM32 자체 UART 에러 (노이즈, 핀 설정 등)
+//        return 0xDEADBEEF;
+//    }
+//}
+
 uint32_t TMC2209_ReadRegister(UART_HandleTypeDef *huart, uint8_t motor_addr, uint8_t reg_addr) {
     uint8_t tx_datagram[4];
-    uint8_t rx_datagram[8] = {0}; // 수신 버퍼
+    uint8_t rx_datagram[8] = {0};
     uint32_t result = 0;
+    // 1. 상태 초기화
+    if (huart->gState != HAL_UART_STATE_READY || huart->RxState != HAL_UART_STATE_READY) {
+        HAL_UART_Abort(huart);
+    }
+    __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
+    __HAL_UART_SEND_REQ(huart, UART_RXDATA_FLUSH_REQUEST);
 
-    // 1. 읽기 명령 데이터그램 조립
-    tx_datagram[0] = 0x05;                        // Sync Byte
-    tx_datagram[1] = motor_addr;                  // Slave Address
-    tx_datagram[2] = reg_addr & 0x7F;             // Register Address (MSB 0 = Read)
-    tx_datagram[3] = TMC2209_CalcCRC(tx_datagram, 3); // CRC 계산
+    // 2. 읽기 명령 조립
+    tx_datagram[0] = 0x05;
+    tx_datagram[1] = motor_addr;
+    tx_datagram[2] = reg_addr & 0x7F;
+    tx_datagram[3] = TMC2209_CalcCRC(tx_datagram, 3);
 
-    // 2. 송신 모드로 전환하여 데이터 발사
+    // 3. 송신 모드 (이때 STM32가 라인을 HIGH로 잡아줌)
     HAL_HalfDuplex_EnableTransmitter(huart);
-    HAL_UART_Transmit(huart, tx_datagram, 4, HAL_MAX_DELAY);
 
-    // 3. 수신 모드 전환
+    if (HAL_UART_Transmit(huart, tx_datagram, 4, 10) != HAL_OK) {
+        return 0xAAAAAAAA;
+    }
+
+    // 4. 수신 모드 전환 및 버퍼 청소
     HAL_HalfDuplex_EnableReceiver(huart);
-
-    // ⭐️ [가장 중요] 전환 과정에서 발생한 노이즈 및 에러 플래그 강제 삭제!!
-    // 이거 없으면 STM32가 에러 났다고 착각하고 수신을 거부합니다.
+    __HAL_UART_SEND_REQ(huart, UART_RXDATA_FLUSH_REQUEST);
     __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
 
-    // 4. 수신 시도 및 결과 상태 저장 (타임아웃 20ms로 넉넉하게)
-    HAL_StatusTypeDef status = HAL_UART_Receive(huart, rx_datagram, 8, 20);
+    // 5. 수신 시도
+    HAL_StatusTypeDef status = HAL_UART_Receive(huart, rx_datagram, 8, 200);
 
-    // 5. 결과에 따른 디버깅 처리
+
+    if (status != HAL_OK) {
+        HAL_UART_AbortReceive(huart);
+    }
+
+    HAL_HalfDuplex_EnableTransmitter(huart);
+
+    // 6. 결과 파싱 및 반환
     if (status == HAL_OK) {
-        // 수신 성공! 데이터 조립
         result = (rx_datagram[3] << 24) | (rx_datagram[4] << 16) | (rx_datagram[5] << 8) | rx_datagram[6];
         return result;
     } else if (status == HAL_TIMEOUT) {
-        // 모터가 대답을 안 함 (단선, 주소 불일치, 동기화 안됨 등)
         return 0xEEEEEEEE;
     } else {
-        // STM32 자체 UART 에러 (노이즈, 핀 설정 등)
         return 0xDEADBEEF;
     }
 }

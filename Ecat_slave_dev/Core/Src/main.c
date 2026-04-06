@@ -130,8 +130,9 @@ extern void servo_on(int axis);
 extern void servo_off(int axis);
 extern void ec_valinit();
 extern void CalcMotion(int axis);
-extern uint32_t motCtrl();
+extern uint32_t motCtrl(uint8_t axis);
 extern void CiA402_StateMachine(int axis);
+extern void DWT_Delay_Init(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -185,7 +186,7 @@ int main(void)
   /* USER CODE END 1 */
 
   /* MPU Configuration--------------------------------------------------------*/
-   MPU_Config();
+  MPU_Config();
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -247,25 +248,23 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); // PWM Timer init
   HAL_TIM_Base_Start_IT(&htim2); // ethercat timer init with interrupt
 
+  DWT_Delay_Init();
 
   BSP_LED_On(LED_GREEN);
   /* USER CODE END BSP */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  //servo_on();
-//  static uint8_t old_speed = 255;
-//  static uint8_t old_dir = 255;
-  //estegg();
-  //HAL_Delay(1000);
+  //servo_on(0);
+//  estegg();
+//  HAL_Delay(1000);
 
-  //motCtrl();
-  //HAL_Delay(1000);
+  //motCtrl(0);
+
   while (1)
   {
-
 	  TMC_statecheck();
-	  HAL_Delay(10);
+	  HAL_Delay(100);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -356,7 +355,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_HIGH;
   hspi1.Init.CLKPhase = SPI_PHASE_2EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -529,7 +528,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 500000;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -669,20 +668,25 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
     if (htim->Instance == TIM2)
     {
-    	static int cnt = 0;
-    	cnt++;
+    	uint32_t start_tick = DWT_GetTick();
         // 동작 확인을 위해 보드의 LED를 토글해볼 수 있습니다.
         //cnt%2 == 0 ? BSP_LED_On(LED_RED) : BSP_LED_Off(LED_RED);
     	ecat_slv();
+    	uint32_t end_tick = DWT_GetTick();
+    	uint32_t spendtime = end_tick - start_tick;
     }
 }
 
 //Read TMC Status Register
 void TMC_statecheck()
 {
-	for (int i = 0; i < 4; i++) {
+	for (int i = 0; i < 1; i++) {
 	    // UART로 DRV_STATUS를 천천히 읽어옴
-	    uint32_t drv_status = TMC2209_ReadRegister(&huart1, i, 0x6F);
+//		if(0<i)
+//			continue;
+		TMC2209_WriteRegister(&huart1, i, 0x00, 0x000000C0);
+		//delay_us(100);
+	    uint32_t drv_status = TMC2209_ReadRegister(&huart1, i, 0x6F);//레지스터 주소 확인 필요
 	    // TMC2208 Chip Error check
 	    if ((drv_status & DRV_ERROR_MASK) != 0){
 	    	g_hwErr[i] = true; // 비정상 ==> 비정상인 경우 해결될때까지 모터 구동 대기 함수 필요
@@ -692,6 +696,7 @@ void TMC_statecheck()
 //	    }
 	}
 }
+
 
 void estegg()
 {

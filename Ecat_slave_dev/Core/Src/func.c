@@ -30,10 +30,10 @@ void servo_off(int axis) {
 	HAL_GPIO_WritePin(g_MotPORT[axis], g_MotPIN[axis], GPIO_PIN_SET);
 }
 
-uint32_t motCtrl(int axis){
+uint32_t motCtrl(uint8_t axis){
 	uint32_t count_before = TMC2209_ReadRegister(&huart1, axis, 0x02);
 	TMC2209_WriteRegister(&huart1, axis, 0x00, 0x00000080);
-	TMC2209_WriteRegister(&huart1, axis, 0x10, 0x00070E03);
+	TMC2209_WriteRegister(&huart1, axis, 0x10, 0x00070E03);// 전류값 설정
 	TMC2209_WriteRegister(&huart1, axis, 0x22, -200000);
 	uint32_t count_after = TMC2209_ReadRegister(&huart1, axis, 0x02);
 	return count_before != count_after ? 1 : 0;
@@ -242,4 +242,21 @@ void ec_valinit() {
 		gw_overtemp_pre[i] = false;
 		g_MaxSpeed[i] = 0xFF;
 	}
+}
+
+void DWT_Delay_Init(void) {
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+void delay_us(uint32_t us) {
+    uint32_t count = us * (HAL_RCC_GetHCLKFreq() / 1000000) / 10; // 계수는 CPU마다 조정 필요
+    while(count--) {
+        __NOP(); // 아무 동작도 하지 않음 (최적화 방지)
+    }
+}
+
+uint32_t DWT_GetTick(void) {
+    return DWT->CYCCNT;
 }
