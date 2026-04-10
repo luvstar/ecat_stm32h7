@@ -2,88 +2,97 @@
 <EtherCATInfo Version="1.2" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="EtherCATInfo.xsd">
   <Vendor>
     <Id>#x1337</Id>
-    <Name>Custom STM32 Motor Control_rev2.02</Name>
+    <Name>Custom STM32 Motor Control_rev2.21</Name>
   </Vendor>
   <Descriptions>
     <Groups>
       <Group>
-        <Type>Motor_Controllers</Type>
+        <Type>Custom_Controllers</Type>
         <Name Lcid="1033">4-Axis Controllers</Name>
       </Group>
     </Groups>
     <Devices>
       <Device Physics="YY">
-        <Type ProductCode="#x04D2" RevisionNo="#x00000000">STM32H753_4Axis</Type>
-        <Name Lcid="1033">STM32H753 4-Axis Controller (LAN9252)</Name>
-        <GroupType>Motor_Controllers</GroupType>
+        <Type ProductCode="#x04D3" RevisionNo="#x00000001">STM32H753_4Axis_Final_2</Type>
+        <Name Lcid="1033">STM32H753 4-Axis Controller (LAN9252) Rev1.7</Name>
+        <GroupType>Custom_Controllers</GroupType>
         
-        <Profile>
-          <ProfileNo>5001</ProfileNo>
-          <Dictionary>
-            <Objects>
-              <Object>
-                <Index>#x1000</Index>
-                <Name>Device type</Name>
-                <Type>UDINT</Type>
-                <BitSize>32</BitSize>
-                <Flags><Access>ro</Access></Flags>
-              </Object>
-              <Object>
-                <Index>#x1018</Index>
-                <Name>Identity</Name>
-                <Type>DT1018</Type>
-                <BitSize>144</BitSize>
-                <Flags><Access>ro</Access></Flags>
-              </Object>
-            </Objects>
-          </Dictionary>
-        </Profile>
-
         <Sm StartAddress="#x1000" ControlByte="#x26" DefaultSize="128" Enable="1">MBoxOut</Sm>
         <Sm StartAddress="#x1080" ControlByte="#x22" DefaultSize="128" Enable="1">MBoxIn</Sm>
-        <Sm StartAddress="#x1100" ControlByte="#x24" DefaultSize="32" Enable="1">Outputs</Sm>
-        <Sm StartAddress="#x1200" ControlByte="#x20" DefaultSize="20" Enable="1">Inputs</Sm>
+        <Sm StartAddress="#x1100" ControlByte="#x24" DefaultSize="96" Enable="1">Outputs</Sm>
+        <Sm StartAddress="#x1220" ControlByte="#x20" DefaultSize="32" Enable="1">Inputs</Sm>
 
         <Fmmu>Outputs</Fmmu>
         <Fmmu>Inputs</Fmmu>
         <Fmmu>MBoxState</Fmmu>
         
         <Mailbox>
-          <CoE SdoInfo="false" PdoAssign="false" PdoConfig="false" CompleteAccess="false"/>
+          <CoE SdoInfo="true" PdoAssign="false" PdoConfig="false" CompleteAccess="false"/>
         </Mailbox>
 
-        <RxPdo Sm="2" Fixed="true" Mandatory="true">
-          <Index>#x1600</Index>
-          <Name>RxPDO 4-Axis Target</Name>
-          <Entry><Index>#x7000</Index><SubIndex>1</SubIndex><BitLen>32</BitLen><Name>Target Pos Axis 1</Name><DataType>UDINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>2</SubIndex><BitLen>32</BitLen><Name>Target Pos Axis 2</Name><DataType>UDINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>3</SubIndex><BitLen>32</BitLen><Name>Target Pos Axis 3</Name><DataType>UDINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>4</SubIndex><BitLen>32</BitLen><Name>Target Pos Axis 4</Name><DataType>UDINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>5</SubIndex><BitLen>8</BitLen><Name>Direction Axis 1</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>6</SubIndex><BitLen>8</BitLen><Name>Direction Axis 2</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>7</SubIndex><BitLen>8</BitLen><Name>Direction Axis 3</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>8</SubIndex><BitLen>8</BitLen><Name>Direction Axis 4</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>9</SubIndex><BitLen>8</BitLen><Name>Target Speed Axis 1</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>10</SubIndex><BitLen>8</BitLen><Name>Target Speed Axis 2</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>11</SubIndex><BitLen>8</BitLen><Name>Target Speed Axis 3</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>12</SubIndex><BitLen>8</BitLen><Name>Target Speed Axis 4</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>13</SubIndex><BitLen>8</BitLen><Name>Accel Pattern Axis 1</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>14</SubIndex><BitLen>8</BitLen><Name>Accel Pattern Axis 2</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>15</SubIndex><BitLen>8</BitLen><Name>Accel Pattern Axis 3</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>16</SubIndex><BitLen>8</BitLen><Name>Accel Pattern Axis 4</Name><DataType>USINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>17</SubIndex><BitLen>16</BitLen><Name>Control Word</Name><DataType>UINT</DataType></Entry>
-          <Entry><Index>#x7000</Index><SubIndex>18</SubIndex><BitLen>16</BitLen><Name>Dummy Align</Name><DataType>UINT</DataType></Entry>
+        <RxPdo Sm="2" Fixed="true" Mandatory="true"><Index>#x1600</Index><Name>RxPDO Axis 1</Name>
+          <Entry><Index>#x2100</Index><SubIndex>5</SubIndex><BitLen>32</BitLen><Name>Pos1</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>9</SubIndex><BitLen>32</BitLen><Name>Spd1</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>13</SubIndex><BitLen>32</BitLen><Name>MaxSpd1</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>17</SubIndex><BitLen>32</BitLen><Name>Acc1</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>21</SubIndex><BitLen>32</BitLen><Name>Dec1</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>1</SubIndex><BitLen>16</BitLen><Name>CW1</Name><DataType>UINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>25</SubIndex><BitLen>8</BitLen><Name>Pat1</Name><DataType>USINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>29</SubIndex><BitLen>8</BitLen><Name>Dummy1</Name><DataType>USINT</DataType></Entry>
         </RxPdo>
 
-        <TxPdo Sm="3" Fixed="true" Mandatory="true">
-          <Index>#x1A00</Index>
-          <Name>TxPDO 4-Axis Actual</Name>
-          <Entry><Index>#x6000</Index><SubIndex>1</SubIndex><BitLen>32</BitLen><Name>Actual Pos Axis 1</Name><DataType>UDINT</DataType></Entry>
-          <Entry><Index>#x6000</Index><SubIndex>2</SubIndex><BitLen>32</BitLen><Name>Actual Pos Axis 2</Name><DataType>UDINT</DataType></Entry>
-          <Entry><Index>#x6000</Index><SubIndex>3</SubIndex><BitLen>32</BitLen><Name>Actual Pos Axis 3</Name><DataType>UDINT</DataType></Entry>
-          <Entry><Index>#x6000</Index><SubIndex>4</SubIndex><BitLen>32</BitLen><Name>Actual Pos Axis 4</Name><DataType>UDINT</DataType></Entry>
-          <Entry><Index>#x6000</Index><SubIndex>5</SubIndex><BitLen>16</BitLen><Name>Status Word</Name><DataType>UINT</DataType></Entry>
-          <Entry><Index>#x6000</Index><SubIndex>6</SubIndex><BitLen>16</BitLen><Name>Error Code</Name><DataType>UINT</DataType></Entry>
+        <RxPdo Sm="2" Fixed="true" Mandatory="true"><Index>#x1601</Index><Name>RxPDO Axis 2</Name>
+          <Entry><Index>#x2100</Index><SubIndex>6</SubIndex><BitLen>32</BitLen><Name>Pos2</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>10</SubIndex><BitLen>32</BitLen><Name>Spd2</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>14</SubIndex><BitLen>32</BitLen><Name>MaxSpd2</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>18</SubIndex><BitLen>32</BitLen><Name>Acc2</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>22</SubIndex><BitLen>32</BitLen><Name>Dec2</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>2</SubIndex><BitLen>16</BitLen><Name>CW2</Name><DataType>UINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>26</SubIndex><BitLen>8</BitLen><Name>Pat2</Name><DataType>USINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>30</SubIndex><BitLen>8</BitLen><Name>Dummy2</Name><DataType>USINT</DataType></Entry>
+        </RxPdo>
+
+        <RxPdo Sm="2" Fixed="true" Mandatory="true"><Index>#x1602</Index><Name>RxPDO Axis 3</Name>
+          <Entry><Index>#x2100</Index><SubIndex>7</SubIndex><BitLen>32</BitLen><Name>Pos3</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>11</SubIndex><BitLen>32</BitLen><Name>Spd3</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>15</SubIndex><BitLen>32</BitLen><Name>MaxSpd3</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>19</SubIndex><BitLen>32</BitLen><Name>Acc3</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>23</SubIndex><BitLen>32</BitLen><Name>Dec3</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>3</SubIndex><BitLen>16</BitLen><Name>CW3</Name><DataType>UINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>27</SubIndex><BitLen>8</BitLen><Name>Pat3</Name><DataType>USINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>31</SubIndex><BitLen>8</BitLen><Name>Dummy3</Name><DataType>USINT</DataType></Entry>
+        </RxPdo>
+
+        <RxPdo Sm="2" Fixed="true" Mandatory="true"><Index>#x1603</Index><Name>RxPDO Axis 4</Name>
+          <Entry><Index>#x2100</Index><SubIndex>8</SubIndex><BitLen>32</BitLen><Name>Pos4</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>12</SubIndex><BitLen>32</BitLen><Name>Spd4</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>16</SubIndex><BitLen>32</BitLen><Name>MaxSpd4</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>20</SubIndex><BitLen>32</BitLen><Name>Acc4</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>24</SubIndex><BitLen>32</BitLen><Name>Dec4</Name><DataType>UDINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>4</SubIndex><BitLen>16</BitLen><Name>CW4</Name><DataType>UINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>28</SubIndex><BitLen>8</BitLen><Name>Pat4</Name><DataType>USINT</DataType></Entry>
+          <Entry><Index>#x2100</Index><SubIndex>32</SubIndex><BitLen>8</BitLen><Name>Dummy4</Name><DataType>USINT</DataType></Entry>
+        </RxPdo>
+
+        <TxPdo Sm="3" Fixed="true" Mandatory="true"><Index>#x1A00</Index><Name>TxPDO Axis 1</Name>
+          <Entry><Index>#x2000</Index><SubIndex>1</SubIndex><BitLen>16</BitLen><Name>SW1</Name><DataType>UINT</DataType></Entry>
+          <Entry><Index>#x2000</Index><SubIndex>5</SubIndex><BitLen>32</BitLen><Name>ActPos1</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2000</Index><SubIndex>9</SubIndex><BitLen>16</BitLen><Name>Err1</Name><DataType>UINT</DataType></Entry>
+        </TxPdo>
+        <TxPdo Sm="3" Fixed="true" Mandatory="true"><Index>#x1A01</Index><Name>TxPDO Axis 2</Name>
+          <Entry><Index>#x2000</Index><SubIndex>2</SubIndex><BitLen>16</BitLen><Name>SW2</Name><DataType>UINT</DataType></Entry>
+          <Entry><Index>#x2000</Index><SubIndex>6</SubIndex><BitLen>32</BitLen><Name>ActPos2</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2000</Index><SubIndex>10</SubIndex><BitLen>16</BitLen><Name>Err2</Name><DataType>UINT</DataType></Entry>
+        </TxPdo>
+        <TxPdo Sm="3" Fixed="true" Mandatory="true"><Index>#x1A02</Index><Name>TxPDO Axis 3</Name>
+          <Entry><Index>#x2000</Index><SubIndex>3</SubIndex><BitLen>16</BitLen><Name>SW3</Name><DataType>UINT</DataType></Entry>
+          <Entry><Index>#x2000</Index><SubIndex>7</SubIndex><BitLen>32</BitLen><Name>ActPos3</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2000</Index><SubIndex>11</SubIndex><BitLen>16</BitLen><Name>Err3</Name><DataType>UINT</DataType></Entry>
+        </TxPdo>
+        <TxPdo Sm="3" Fixed="true" Mandatory="true"><Index>#x1A03</Index><Name>TxPDO Axis 4</Name>
+          <Entry><Index>#x2000</Index><SubIndex>4</SubIndex><BitLen>16</BitLen><Name>SW4</Name><DataType>UINT</DataType></Entry>
+          <Entry><Index>#x2000</Index><SubIndex>8</SubIndex><BitLen>32</BitLen><Name>ActPos4</Name><DataType>DINT</DataType></Entry>
+          <Entry><Index>#x2000</Index><SubIndex>12</SubIndex><BitLen>16</BitLen><Name>Err4</Name><DataType>UINT</DataType></Entry>
         </TxPdo>
 
         <Eeprom>
