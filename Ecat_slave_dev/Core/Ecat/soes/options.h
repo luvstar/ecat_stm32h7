@@ -124,7 +124,6 @@
 #endif
 
 /* Max number of dynamically mapped objects in SM2. */
-// ⭐️ 수정: 4개 축의 PDO 엔트리(32개)를 수용할 수 있도록 기본값 확장
 #ifndef MAX_MAPPINGS_SM2
 #define MAX_MAPPINGS_SM2 48
 #endif

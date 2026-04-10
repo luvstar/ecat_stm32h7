@@ -166,108 +166,186 @@ static void ESC_read_pram (uint16_t address, void *buf, uint16_t len)
 {
    uint32_t value;
    uint8_t * temp_buf = buf;
-   uint16_t byte_offset = 0;
-   uint8_t fifo_cnt, first_byte_position, temp_len, data[4];
 
+   // 1. 읽기 명령 취소 및 초기화
    value = ESC_PRAM_CMD_ABORT;
    lan9252_write_32(ESC_PRAM_RD_CMD_REG, value);
+   do { value = lan9252_read_32(ESC_PRAM_RD_CMD_REG); } while(value & ESC_PRAM_CMD_BUSY);
 
-   do {
-      value = lan9252_read_32(ESC_PRAM_RD_CMD_REG);
-   } while(value & ESC_PRAM_CMD_BUSY);
-
+   // 2. 주소 및 길이 세팅
    value = ESC_PRAM_SIZE(len) | ESC_PRAM_ADDR(address);
    lan9252_write_32(ESC_PRAM_RD_ADDR_LEN_REG, value);
 
+   // 3. 읽기 시작 명령
    value = ESC_PRAM_CMD_BUSY;
    lan9252_write_32(ESC_PRAM_RD_CMD_REG, value);
+   do { value = lan9252_read_32(ESC_PRAM_RD_CMD_REG); } while((value & ESC_PRAM_CMD_AVAIL) == 0);
 
-   do {
-      value = lan9252_read_32(ESC_PRAM_RD_CMD_REG);
-   } while((value & ESC_PRAM_CMD_AVAIL) == 0);
+   // 4. ⭐️ [해결의 핵심] LAN9252의 Read FIFO 주소는 무조건 0x000 입니다!
+   uint8_t first_byte_position = (address & 0x03);
 
-   fifo_cnt = ESC_PRAM_CMD_CNT(value);
-   value = lan9252_read_32(ESC_PRAM_RD_FIFO_REG);
-   fifo_cnt--;
+   // FIFO는 4바이트(DWORD) 단위이므로, 읽어야 할 총 바이트 수를 4의 배수로 맞춤
+   uint16_t padded_len = (first_byte_position + len + 3) & ~3;
 
-   first_byte_position = (address & 0x03);
-   temp_len = ((4 - first_byte_position) > len) ? len : (4 - first_byte_position);
+   uint8_t tx_buf[132] = {0};
+   uint8_t rx_buf[132] = {0};
 
-   memcpy(temp_buf, ((uint8_t *)&value + first_byte_position), temp_len);
-   len -= temp_len;
-   byte_offset += temp_len;
+   tx_buf[0] = ESC_CMD_FAST_READ;
+   tx_buf[1] = 0x00; // ⭐️ 레지스터 주소 MSB (0x000 FIFO)
+   tx_buf[2] = 0x00; // ⭐️ 레지스터 주소 LSB (0x000 FIFO)
+   tx_buf[3] = 0x00; // Dummy Byte
 
    spi_select();
-   data[0] = ESC_CMD_FAST_READ;
-   data[1] = ((ESC_PRAM_RD_FIFO_REG >> 8) & 0xFF);
-   data[2] = (ESC_PRAM_RD_FIFO_REG & 0xFF);
-   data[3] = 0x00;
-   write(data, 4);
-
-   while(len > 0) {
-      temp_len = (len > 4) ? 4: len;
-      read((temp_buf + byte_offset), 4);
-      fifo_cnt--;
-      len -= temp_len;
-      byte_offset += temp_len;
-   }
+   // while 루프 없이, 단 한 번의 HAL 호출로 클럭 끊김(Gap)을 완벽 차단!
+   HAL_SPI_TransmitReceive(&hspi1, tx_buf, rx_buf, 4 + padded_len, HAL_MAX_DELAY);
    spi_unselect();
+
+   // 명령어(4바이트) + 패딩 오프셋을 걷어내고 순수 데이터만 복사
+   memcpy(temp_buf, &rx_buf[4 + first_byte_position], len);
 }
+//static void ESC_read_pram (uint16_t address, void *buf, uint16_t len)
+//{
+//   uint32_t value;
+//   uint8_t * temp_buf = buf;
+//   uint16_t byte_offset = 0;
+//   uint8_t fifo_cnt, first_byte_position, temp_len, data[4];
+//
+//   value = ESC_PRAM_CMD_ABORT;
+//   lan9252_write_32(ESC_PRAM_RD_CMD_REG, value);
+//
+//   do {
+//      value = lan9252_read_32(ESC_PRAM_RD_CMD_REG);
+//   } while(value & ESC_PRAM_CMD_BUSY);
+//
+//   value = ESC_PRAM_SIZE(len) | ESC_PRAM_ADDR(address);
+//   lan9252_write_32(ESC_PRAM_RD_ADDR_LEN_REG, value);
+//
+//   value = ESC_PRAM_CMD_BUSY;
+//   lan9252_write_32(ESC_PRAM_RD_CMD_REG, value);
+//
+//   do {
+//      value = lan9252_read_32(ESC_PRAM_RD_CMD_REG);
+//   } while((value & ESC_PRAM_CMD_AVAIL) == 0);
+//
+//   fifo_cnt = ESC_PRAM_CMD_CNT(value);
+//   value = lan9252_read_32(ESC_PRAM_RD_FIFO_REG);
+//   fifo_cnt--;
+//
+//   first_byte_position = (address & 0x03);
+//   temp_len = ((4 - first_byte_position) > len) ? len : (4 - first_byte_position);
+//
+//   memcpy(temp_buf, ((uint8_t *)&value + first_byte_position), temp_len);
+//   len -= temp_len;
+//   byte_offset += temp_len;
+//
+//   spi_select();
+//   data[0] = ESC_CMD_FAST_READ;
+//   data[1] = ((ESC_PRAM_RD_FIFO_REG >> 8) & 0xFF);
+//   data[2] = (ESC_PRAM_RD_FIFO_REG & 0xFF);
+//   data[3] = 0x00;
+//   write(data, 4);
+//
+//   while(len > 0) {
+//      temp_len = (len > 4) ? 4: len;
+//      read((temp_buf + byte_offset), 4);
+//      fifo_cnt--;
+//      len -= temp_len;
+//      byte_offset += temp_len;
+//   }
+//   spi_unselect();
+//}
 
 /* ESC write process data ram function */
 static void ESC_write_pram (uint16_t address, void *buf, uint16_t len)
 {
    uint32_t value;
    uint8_t * temp_buf = buf;
-   uint16_t byte_offset = 0;
-   uint8_t fifo_cnt, first_byte_position, temp_len, data[3];
 
+   // 1. 쓰기 명령 취소 및 초기화
    value = ESC_PRAM_CMD_ABORT;
    lan9252_write_32(ESC_PRAM_WR_CMD_REG, value);
+   do { value = lan9252_read_32(ESC_PRAM_WR_CMD_REG); } while(value & ESC_PRAM_CMD_BUSY);
 
-   do {
-      value = lan9252_read_32(ESC_PRAM_WR_CMD_REG);
-   } while(value & ESC_PRAM_CMD_BUSY);
-
+   // 2. 주소 및 길이 세팅
    value = ESC_PRAM_SIZE(len) | ESC_PRAM_ADDR(address);
    lan9252_write_32(ESC_PRAM_WR_ADDR_LEN_REG, value);
 
+   // 3. 쓰기 시작 명령
    value = ESC_PRAM_CMD_BUSY;
    lan9252_write_32(ESC_PRAM_WR_CMD_REG, value);
+   do { value = lan9252_read_32(ESC_PRAM_WR_CMD_REG); } while((value & ESC_PRAM_CMD_AVAIL) == 0);
 
-   do {
-      value = lan9252_read_32(ESC_PRAM_WR_CMD_REG);
-   } while((value & ESC_PRAM_CMD_AVAIL) == 0);
+   // 4. ⭐️ [해결의 핵심] LAN9252의 Write FIFO 주소는 무조건 0x020 입니다!
+   uint8_t first_byte_position = (address & 0x03);
+   uint16_t padded_len = (first_byte_position + len + 3) & ~3;
 
-   fifo_cnt = ESC_PRAM_CMD_CNT(value);
-   first_byte_position = (address & 0x03);
-   temp_len = ((4 - first_byte_position) > len) ? len : (4 - first_byte_position);
+   uint8_t tx_buf[132] = {0};
 
-   value = 0;
-   memcpy(((uint8_t *)&value + first_byte_position), temp_buf, temp_len);
-   lan9252_write_32(ESC_PRAM_WR_FIFO_REG, value);
+   tx_buf[0] = ESC_CMD_SERIAL_WRITE;
+   tx_buf[1] = 0x00; // ⭐️ 레지스터 주소 MSB
+   tx_buf[2] = 0x20; // ⭐️ 레지스터 주소 LSB (0x020 FIFO)
 
-   len -= temp_len;
-   byte_offset += temp_len;
-   fifo_cnt--;
+   // 명령어 3바이트 뒤의 정확한 오프셋 위치에 데이터 복사
+   memcpy(&tx_buf[3 + first_byte_position], temp_buf, len);
 
    spi_select();
-   data[0] = ESC_CMD_SERIAL_WRITE;
-   data[1] = ((ESC_PRAM_WR_FIFO_REG >> 8) & 0xFF);
-   data[2] = (ESC_PRAM_WR_FIFO_REG & 0xFF);
-   write(data, 3);
-
-   while(len > 0) {
-      temp_len = (len > 4) ? 4 : len;
-      value = 0;
-      memcpy((uint8_t *)&value, (temp_buf + byte_offset), temp_len);
-      write((uint8_t *)&value, 4);
-      fifo_cnt--;
-      len -= temp_len;
-      byte_offset += temp_len;
-   }
+   // 단 한 번의 끊김 없는 전송으로 96바이트 밀어넣기!
+   HAL_SPI_Transmit(&hspi1, tx_buf, 3 + padded_len, HAL_MAX_DELAY);
    spi_unselect();
 }
+//static void ESC_write_pram (uint16_t address, void *buf, uint16_t len)
+//{
+//   uint32_t value;
+//   uint8_t * temp_buf = buf;
+//   uint16_t byte_offset = 0;
+//   uint8_t fifo_cnt, first_byte_position, temp_len, data[3];
+//
+//   value = ESC_PRAM_CMD_ABORT;
+//   lan9252_write_32(ESC_PRAM_WR_CMD_REG, value);
+//
+//   do {
+//      value = lan9252_read_32(ESC_PRAM_WR_CMD_REG);
+//   } while(value & ESC_PRAM_CMD_BUSY);
+//
+//   value = ESC_PRAM_SIZE(len) | ESC_PRAM_ADDR(address);
+//   lan9252_write_32(ESC_PRAM_WR_ADDR_LEN_REG, value);
+//
+//   value = ESC_PRAM_CMD_BUSY;
+//   lan9252_write_32(ESC_PRAM_WR_CMD_REG, value);
+//
+//   do {
+//      value = lan9252_read_32(ESC_PRAM_WR_CMD_REG);
+//   } while((value & ESC_PRAM_CMD_AVAIL) == 0);
+//
+//   fifo_cnt = ESC_PRAM_CMD_CNT(value);
+//   first_byte_position = (address & 0x03);
+//   temp_len = ((4 - first_byte_position) > len) ? len : (4 - first_byte_position);
+//
+//   value = 0;
+//   memcpy(((uint8_t *)&value + first_byte_position), temp_buf, temp_len);
+//   lan9252_write_32(ESC_PRAM_WR_FIFO_REG, value);
+//
+//   len -= temp_len;
+//   byte_offset += temp_len;
+//   fifo_cnt--;
+//
+//   spi_select();
+//   data[0] = ESC_CMD_SERIAL_WRITE;
+//   data[1] = ((ESC_PRAM_WR_FIFO_REG >> 8) & 0xFF);
+//   data[2] = (ESC_PRAM_WR_FIFO_REG & 0xFF);
+//   write(data, 3);
+//
+//   while(len > 0) {
+//      temp_len = (len > 4) ? 4 : len;
+//      value = 0;
+//      memcpy((uint8_t *)&value, (temp_buf + byte_offset), temp_len);
+//      write((uint8_t *)&value, 4);
+//      fifo_cnt--;
+//      len -= temp_len;
+//      byte_offset += temp_len;
+//   }
+//   spi_unselect();
+//}
 
 /** ESC read function used by the Slave stack. */
 void ESC_read (uint16_t address, void *buf, uint16_t len)

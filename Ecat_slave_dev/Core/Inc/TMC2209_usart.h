@@ -36,4 +36,19 @@ void TMC2209_Update(UART_HandleTypeDef *huart, uint8_t motor_addr, uint8_t targe
 void TMC2209_Init(UART_HandleTypeDef *huart, uint8_t motor_addr);
 void TMC2209_WriteRegister(UART_HandleTypeDef *huart, uint8_t motor_addr, uint8_t reg_addr, uint32_t data);
 uint32_t TMC2209_ReadRegister(UART_HandleTypeDef *huart, uint8_t motor_addr, uint8_t reg_addr);
+
+// DMA 기반 비동기 Non-Blocking 읽기 함수
+void TMC_ReadRegister_DMA_Start(UART_HandleTypeDef *huart, uint8_t motor_addr, uint8_t reg_addr);
+
+// main.c의 while(1) 루프에서 호출할 비동기 상태 체크 함수
+void TMC_statecheck_DMA(void);
+
+
+extern uint8_t tmc_tx_buf[2048];
+extern uint8_t tmc_rx_buf[2048];
+extern volatile uint8_t tmc_dma_state;
+extern volatile uint32_t tmc_last_result;
+extern volatile uint8_t current_reading_axis;
+
+
 #endif /* INC_TMC2209_USART_H_ */

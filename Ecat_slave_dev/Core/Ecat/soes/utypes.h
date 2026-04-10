@@ -14,15 +14,25 @@
 #pragma pack(push, 1) // ⭐️ 강제 1바이트 정렬
 
 // ⭐️ 1축당 정확히 24 Bytes (더미 포함) x 4축 = 96 Bytes
+//typedef struct {
+//    uint16_t control_word;
+//    int32_t  target_pos;
+//    int32_t  target_speed;
+//    uint32_t max_speed;
+//    uint32_t accel_time;
+//    uint32_t decel_time;
+//    uint8_t  speed_pattern;
+//    uint8_t  dummy;          // TwinCAT 메모리 정렬(Padding) 강제 대응용!
+//} AxisTarget_t;
 typedef struct {
-    uint16_t control_word;
-    int32_t  target_pos;
-    int32_t  target_speed;
-    uint32_t max_speed;
-    uint32_t accel_time;
-    uint32_t decel_time;
-    uint8_t  speed_pattern;
-    uint8_t  dummy;          // TwinCAT 메모리 정렬(Padding) 강제 대응용!
+    int32_t  target_pos;     // Offset 0
+    int32_t  target_speed;   // Offset 4
+    uint32_t max_speed;      // Offset 8
+    uint32_t accel_time;     // Offset 12
+    uint32_t decel_time;     // Offset 16
+    uint16_t control_word;   // Offset 20
+    uint8_t  speed_pattern;  // Offset 22
+    uint8_t  dummy;   // Offset 23 (배열 연속성을 위해 구조체 전체 크기를 24바이트로 맞추는 용도)
 } AxisTarget_t;
 
 typedef struct {

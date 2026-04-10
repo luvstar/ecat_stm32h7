@@ -15,7 +15,7 @@
 #define TMC2209_REG_CHOPCONF   0x6C
 
 
-
+volatile static int cnt = 0;
 
 // =========================================================
 // 1. TMC2209 전용 CRC8 계산 함수
@@ -207,3 +207,97 @@ uint32_t TMC2209_ReadRegister(UART_HandleTypeDef *huart, uint8_t motor_addr, uin
         return 0xDEADBEEF;
     }
 }
+
+// =========================================================
+// DMA 통신용 전역 변수 및 플래그
+// =========================================================
+uint8_t tmc_tx_buf[2048];
+uint8_t tmc_rx_buf[2048];
+
+// DMA 상태 머신 (0: 대기, 1: 송신중, 2: 수신중, 3: 수신완료/데이터대기)
+volatile uint8_t tmc_dma_state = 0;
+volatile uint32_t tmc_last_result = 0;
+volatile uint8_t current_reading_axis = 0;
+
+// =========================================================
+// 1. DMA 읽기 명령 시작 함수 (CPU는 명령만 내리고 즉시 빠져나옴)
+// =========================================================
+void TMC_ReadRegister_DMA_Start(UART_HandleTypeDef *huart, uint8_t motor_addr, uint8_t reg_addr) {
+    if (tmc_dma_state != 0) return; // 이미 통신 중이면 무시
+
+    // 오류 상태면 초기화
+    huart->ErrorCode = HAL_UART_ERROR_NONE;
+    if (huart->gState != HAL_UART_STATE_READY || huart->RxState != HAL_UART_STATE_READY) {
+        HAL_UART_Abort(huart);
+    }
+    __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
+    __HAL_UART_SEND_REQ(huart, UART_RXDATA_FLUSH_REQUEST);
+
+    // 데이터 조립
+    tmc_tx_buf[0] = 0x05;
+    tmc_tx_buf[1] = motor_addr;
+    tmc_tx_buf[2] = reg_addr & 0x7F;
+    tmc_tx_buf[3] = TMC2209_CalcCRC(tmc_tx_buf, 3);
+
+    current_reading_axis = motor_addr; // 현재 읽고 있는 축 기억
+    tmc_dma_state = 1;                 // 송신 중 상태로 변경
+
+    // 송신 모드 전환 후 DMA 발사!
+    HAL_HalfDuplex_EnableTransmitter(huart);
+    HAL_UART_Transmit_DMA(huart, tmc_tx_buf, 4);
+}
+
+// =========================================================
+// 2. 송신 완료 콜백 (TX DMA가 끝나면 자동으로 호출됨)
+// =========================================================
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {
+        HAL_HalfDuplex_EnableReceiver(huart);
+
+        // H7 전용 수신 찌꺼기 청소
+        __HAL_UART_SEND_REQ(huart, UART_RXDATA_FLUSH_REQUEST);
+        __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
+
+        tmc_dma_state = 2; // 수신 중 상태로 변경
+
+        // 수신 DMA 발사! (알아서 8바이트를 받아옴)
+        //HAL_UART_Receive_DMA(huart, tmc_rx_buf, 8);
+        if (HAL_UART_Receive_DMA(huart, tmc_rx_buf, 8) != HAL_OK) {
+                    HAL_UART_Abort(huart);
+                    tmc_dma_state = 0; // 실패 시 초기화
+                }
+    }
+}
+
+// =========================================================
+// 3. 수신 완료 콜백 (RX DMA가 8바이트를 다 받으면 호출됨)
+// =========================================================
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {
+        // 수신 데이터 조립
+        tmc_last_result = (tmc_rx_buf[3] << 24) | (tmc_rx_buf[4] << 16) | (tmc_rx_buf[5] << 8) | tmc_rx_buf[6];
+
+        // 다시 송신 모드로 돌려놔서 라인 플로팅 방지(Idle HIGH 유지)
+        HAL_HalfDuplex_EnableTransmitter(huart);
+
+        // [추가] 수신 종료 후 발생할 수 있는 라인 노이즈 찌꺼기 즉시 폐기
+                __HAL_UART_SEND_REQ(huart, UART_RXDATA_FLUSH_REQUEST);
+                __HAL_UART_CLEAR_FLAG(huart, UART_CLEAR_OREF | UART_CLEAR_NEF | UART_CLEAR_PEF | UART_CLEAR_FEF);
+
+        tmc_dma_state = 3; // 수신 완료 플래그 세팅!
+
+        cnt ++;
+    }
+}
+
+// =========================================================
+// 4. UART 에러 발생 시 콜백 (노이즈 등으로 인한 에러 복구)
+// =========================================================
+void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
+    if (huart->Instance == USART1) {
+        HAL_UART_Abort(huart);
+        HAL_HalfDuplex_EnableTransmitter(huart); // 안전하게 TX 모드로 복귀
+        tmc_dma_state = 0; // 상태 초기화 (다음 루프에서 재시도)
+    }
+}
+

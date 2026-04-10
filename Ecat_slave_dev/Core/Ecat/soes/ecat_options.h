@@ -19,12 +19,12 @@
 #define SM2_smc          0x24
 #define SM2_act          1
 
-// ⭐️ SyncManager 3 (Inputs) 설정 - SM2(96바이트) 종료지점에 밀착
+// ⭐️ SyncManager 3 (Inputs) 설정
 #define SM3_sma          0x1220
 #define SM3_smc          0x20
 #define SM3_act          1
 
-// ⭐️ 매핑 엔트리 제한 확장 (32개 이상 수용)
+// ⭐️ 매핑 엔트리
 #define MAX_MAPPINGS_SM2 48
 #define MAX_MAPPINGS_SM3 24
 #define MAX_RXPDO_SIZE   128

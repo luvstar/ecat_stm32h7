@@ -86,6 +86,8 @@ TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
+DMA_HandleTypeDef hdma_usart1_rx;
+DMA_HandleTypeDef hdma_usart1_tx;
 
 /* USER CODE BEGIN PV */
 uint32_t g_StatusWord[MAX_AXIS] = {0x250, 0x250, 0x250, 0x250}; // 축별 상태정보 변수
@@ -115,10 +117,11 @@ bool gw_openload_B[MAX_AXIS] = {false, false, false, false};
 void SystemClock_Config(void);
 static void MPU_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_SPI1_Init(void);
-static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 void SPI_Read(uint16_t address, void *buf, uint16_t len);
 uint8_t LAN9252_HW_Init(void);
@@ -126,6 +129,7 @@ void togglepower(void);
 void estegg(void);
 void ethercat_chip_check(void);
 void TMC_statecheck(void);
+void TMC_statecheck_DMA(void);
 extern void servo_on(int axis);
 extern void servo_off(int axis);
 extern void ec_valinit();
@@ -133,23 +137,40 @@ extern void CalcMotion(int axis);
 extern uint32_t motCtrl(uint8_t axis);
 extern void CiA402_StateMachine(int axis);
 extern void DWT_Delay_Init(void);
+extern uint8_t tmc_tx_buf[2048];
+extern uint8_t tmc_rx_buf[2048];
+extern volatile uint8_t tmc_dma_state;
+extern volatile uint32_t tmc_last_result;
+extern volatile uint8_t current_reading_axis;
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-// 1. 마스터로 보낼 데이터 업데이트 (TxPDO)
+//// 1. 마스터로 보낼 데이터 업데이트 (TxPDO)
+//void cb_get_inputs(void) {
+//	for (int axis = 0; axis < MAX_AXIS; axis++){
+//		Wb.axis[axis].actual_pos = g_Actual_Pos[axis]; // ⭐️ 변경점
+//		Wb.axis[axis].status_word = g_StatusWord[axis];// ⭐️ 변경점
+//        Wb.axis[axis].error_code = 0;
+//	}
+//}
+
+// 1. 마스터로 보낼 데이터 업데이트 (TxPDO)-mm/s
 void cb_get_inputs(void) {
-	for (int axis = 0; axis < MAX_AXIS; axis++){
-		Wb.axis[axis].actual_pos = g_Actual_Pos[axis]; // ⭐️ 변경점
-		Wb.axis[axis].status_word = g_StatusWord[axis];// ⭐️ 변경점
+    for (int axis = 0; axis < 1; axis++){
+        // --- [수정된 부분] 누적된 내부 펄스 카운트를 mm 단위로 변환하여 송신 ---
+        // PULSES_PER_MM은 main.c 상단이나 global.h 등에 extern/매크로로 공유해야 합니다.
+        Wb.axis[axis].actual_pos = (int32_t)(g_Actual_Pos[axis] / ((200.0f * 16.0f) / 40.0f));
+        // ---------------------------------------------------------------------
+        Wb.axis[axis].status_word = g_StatusWord[axis];
         Wb.axis[axis].error_code = 0;
-	}
+    }
 }
 
 // 2. 마스터에서 온 데이터 적용 (RxPDO)
 void cb_set_outputs(void) {
     if (ESCvar.ALstatus == ESC_AL_STATUS_OP) {
-            for (int axis = 0; axis < 4; axis++) {
+            for (int axis = 0; axis < 1; axis++) {//need to fix. 1 => MAX_AXIS
                 CiA402_StateMachine(axis);
                 // ⭐️ Wb 대신 내부 상태인 g_StatusWord를 확인
                 if ((g_StatusWord[axis] & 0x0237) == 0x0237) {
@@ -161,6 +182,7 @@ void cb_set_outputs(void) {
                 servo_off(axis);
             }
         }
+    SCB_CleanDCache_by_Addr((uint32_t *)&Rb, sizeof(_Rbuffer));
 }
 
 // 3. SOES 스택 설정 구조체 연결
@@ -206,10 +228,11 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_SPI1_Init();
-  MX_TIM2_Init();
   MX_USART1_UART_Init();
   MX_TIM1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
   /* USER CODE END 2 */
 
@@ -248,7 +271,7 @@ int main(void)
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); // PWM Timer init
   HAL_TIM_Base_Start_IT(&htim2); // ethercat timer init with interrupt
 
-  DWT_Delay_Init();
+  //DWT_Delay_Init();
 
   BSP_LED_On(LED_GREEN);
   /* USER CODE END BSP */
@@ -263,8 +286,12 @@ int main(void)
 
   while (1)
   {
-	  TMC_statecheck();
-	  HAL_Delay(100);
+	  //TMC_statecheck_DMA();
+	  if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_SET) {
+	      // 버튼이 눌렸을 때 동작
+		  togglepower();
+	      //HAL_Delay(50); // 디바운싱(떨림 방지)을 위한 임시 지연
+	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -542,11 +569,11 @@ static void MX_USART1_UART_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_4) != HAL_OK)
   {
     Error_Handler();
   }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_2) != HAL_OK)
   {
     Error_Handler();
   }
@@ -557,6 +584,25 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Stream0_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream0_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream0_IRQn);
+  /* DMA1_Stream1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Stream1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Stream1_IRQn);
 
 }
 
@@ -672,6 +718,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         // 동작 확인을 위해 보드의 LED를 토글해볼 수 있습니다.
         //cnt%2 == 0 ? BSP_LED_On(LED_RED) : BSP_LED_Off(LED_RED);
     	ecat_slv();
+    	//TMC_statecheck_DMA();
     	uint32_t end_tick = DWT_GetTick();
     	uint32_t spendtime = end_tick - start_tick;
     }
@@ -695,6 +742,30 @@ void TMC_statecheck()
 //	    	//g_hwErr[i] = false; // 정상화 되면 복귀 지양
 //	    }
 	}
+}
+
+void TMC_statecheck_DMA() {
+    static uint8_t axis_to_check = 0;
+
+    // 1. DMA가 아무 일도 안 하고 쉴 때 (새로운 읽기 명령 하달)
+    if (tmc_dma_state == 0) {
+        TMC_ReadRegister_DMA_Start(&huart1, axis_to_check, 0x6F);
+    }
+
+    // 2. DMA가 수신까지 완벽하게 끝냈을 때 (데이터 수거)
+    else if (tmc_dma_state == 3) {
+        // 읽어온 값(tmc_last_result)을 에러 마스크로 체크
+        if ((tmc_last_result & DRV_ERROR_MASK) != 0) {
+            g_hwErr[current_reading_axis] = true;
+        }
+        // 다음 축으로 넘어가기 준비
+        //axis_to_check++;
+        if (axis_to_check >= MAX_AXIS) axis_to_check = 0;
+
+        tmc_dma_state = 0; // 다시 Idle 상태로 (다음 루프에서 새로운 읽기 시작)
+    }
+
+
 }
 
 
