@@ -84,6 +84,7 @@ SPI_HandleTypeDef hspi1;
 
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_rx;
@@ -122,6 +123,7 @@ static void MX_SPI1_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 void SPI_Read(uint16_t address, void *buf, uint16_t len);
 uint8_t LAN9252_HW_Init(void);
@@ -233,6 +235,7 @@ int main(void)
   MX_USART1_UART_Init();
   MX_TIM1_Init();
   MX_TIM2_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   /* USER CODE END 2 */
 
@@ -259,19 +262,16 @@ int main(void)
 
   /* -- Sample board code to switch on leds ---- */
   ec_valinit();
-
   ethercat_chip_check();
-
   BSP_LED_On(LED_RED);
-
   ecat_slv_init(&config);
-
   BSP_LED_On(LED_BLUE);
 
   HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1); // PWM Timer init
   HAL_TIM_Base_Start_IT(&htim2); // ethercat timer init with interrupt
+  HAL_TIM_Base_Start(&htim3);
 
-  //DWT_Delay_Init();
+  DWT_Delay_Init();
 
   BSP_LED_On(LED_GREEN);
   /* USER CODE END BSP */
@@ -284,14 +284,16 @@ int main(void)
 
   //motCtrl(0);
 
+  uint32_t debug_buf[32] = {0,};
   while (1)
   {
 	  //TMC_statecheck_DMA();
 	  if (HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13) == GPIO_PIN_SET) {
 	      // 버튼이 눌렸을 때 동작
 		  togglepower();
-	      //HAL_Delay(50); // 디바운싱(떨림 방지)을 위한 임시 지연
 	  }
+	  //ethercat register read func
+	  //ESC_read(0x110, debug_buf, 4);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -447,7 +449,7 @@ static void MX_TIM1_Init(void)
   {
     Error_Handler();
   }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
   sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
@@ -536,6 +538,52 @@ static void MX_TIM2_Init(void)
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_SlaveConfigTypeDef sSlaveConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 0;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65535;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sSlaveConfig.SlaveMode = TIM_SLAVEMODE_EXTERNAL1;
+  sSlaveConfig.InputTrigger = TIM_TS_ITR0;
+  if (HAL_TIM_SlaveConfigSynchro(&htim3, &sSlaveConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
 
 }
 
@@ -672,9 +720,10 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void ethercat_chip_check()
 {
+restart:
   //---------------------LAN9252 ID Check---------------------------------
   // 1. 송신 버퍼 세팅: Fast Read(0x0B) + 주소(0x0050) + 더미(0x00) + 데이터 받을 빈 공간 4칸
-  uint8_t tx_buf[8] = {0x0B, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00};
+  uint8_t tx_buf[8] = {0x0B, 0x00, 0x50, 0x00, 0x00, 0x00, 0x00, 0x00}; // TODO: 버퍼에 패킷 추가하기. 프로토콜 변경.
   uint8_t rx_buf[8] = {0};
 
   // 2. CS 핀 Low (PE2)
@@ -692,12 +741,8 @@ void ethercat_chip_check()
   //------------------------------------------------------
   if(verify_id != 0x92520001)
   {
-  	while(1){
-  		HAL_Delay(100);
-  		BSP_LED_On(LED_RED);
-  		HAL_Delay(100);
-  		BSP_LED_Off(LED_RED);
-  	}
+	  BSP_LED_Off(LED_RED);
+	  //goto restart;
   }
 }
 
@@ -772,7 +817,7 @@ void TMC_statecheck_DMA() {
 void estegg()
 {
 /* ========================================================== */
-  /* 🎵 스텝 모터 연주 프로그램: "비행기 (Airplane)" 🎵 */
+  /* 🎵 스텝 모터 연주 프로그램: "비행기 (Airplane)" 🎵 */ // --> 이스터에그 노잼. 더 재밋는걸로 하세요
   /* ========================================================== */
   int totalNotes = sizeof(melody) / sizeof(melody[0]);
 
@@ -784,7 +829,7 @@ void estegg()
       // 음표의 속도로 모터 회전 (소리 내기)
       TMC2209_WriteRegister(&huart1, 0x00, 0x22, melody[i]);
 
-      // 음표의 길이만큼 유지하되, 음과 음 사이를 구분하기 위해 끝부분 50ms는 뺍니다.
+      // 음표의 길이만큼 유지하되, 음과 음 사이를 구분하기 위해 끝부분 50ms는 뺍니다. --> GPT 쓴거 다티나죠
       HAL_Delay(noteDurations[i] - 50);
 
       // ⭐️ 핵심: 음이 뭉개지지 않도록(스타카토 느낌) 아주 잠깐 모터를 세워줍니다.
@@ -792,7 +837,7 @@ void estegg()
       HAL_Delay(50);
   }
 
-  // 6. 연주가 끝나면 모터 정지
+  // 6. 연주가 끝나면 모터 정지 --> TODO: 모터 정지하지 말고 풀로 돌리기
   TMC2209_WriteRegister(&huart1, 0x00, 0x22, 0);
 }
 /* USER CODE END 4 */

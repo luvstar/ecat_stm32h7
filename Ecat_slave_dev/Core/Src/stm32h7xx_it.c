@@ -51,7 +51,7 @@ extern void ecat_slv_poll(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+extern void Motor_Pulse_ISR(uint8_t axis);
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
@@ -304,5 +304,19 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim)
     }
     */
   }
+}
+
+void TIM1_UP_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM1_UP_IRQn 0 */
+
+  // ⭐️ 방금 만든 무적의 스나이퍼 함수 호출 (0번 축)
+  Motor_Pulse_ISR(0);
+
+  /* USER CODE END TIM1_UP_IRQn 0 */
+  HAL_TIM_IRQHandler(&htim1);
+  /* USER CODE BEGIN TIM1_UP_IRQn 1 */
+
+  /* USER CODE END TIM1_UP_IRQn 1 */
 }
 /* USER CODE END 1 */
