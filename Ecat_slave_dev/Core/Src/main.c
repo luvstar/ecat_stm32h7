@@ -139,8 +139,8 @@ extern void CalcMotion(int axis);
 extern uint32_t motCtrl(uint8_t axis);
 extern void CiA402_StateMachine(int axis);
 extern void DWT_Delay_Init(void);
-extern uint8_t tmc_tx_buf[2048];
-extern uint8_t tmc_rx_buf[2048];
+extern uint8_t tmc_tx_buf[8];
+extern uint8_t tmc_rx_buf[16];
 extern volatile uint8_t tmc_dma_state;
 extern volatile uint32_t tmc_last_result;
 extern volatile uint8_t current_reading_axis;
@@ -613,7 +613,7 @@ static void MX_USART1_UART_Init(void)
   huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
   huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_HalfDuplex_Init(&huart1) != HAL_OK)
+  if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     Error_Handler();
   }
@@ -809,8 +809,6 @@ void TMC_statecheck_DMA() {
 
         tmc_dma_state = 0; // 다시 Idle 상태로 (다음 루프에서 새로운 읽기 시작)
     }
-
-
 }
 
 

@@ -44,8 +44,8 @@ void TMC_ReadRegister_DMA_Start(UART_HandleTypeDef *huart, uint8_t motor_addr, u
 void TMC_statecheck_DMA(void);
 
 
-extern uint8_t tmc_tx_buf[2048];
-extern uint8_t tmc_rx_buf[2048];
+extern uint8_t tmc_tx_buf[8];
+extern uint8_t tmc_rx_buf[16];
 extern volatile uint8_t tmc_dma_state;
 extern volatile uint32_t tmc_last_result;
 extern volatile uint8_t current_reading_axis;
