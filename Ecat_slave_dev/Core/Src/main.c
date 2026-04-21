@@ -271,7 +271,7 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim2); // ethercat timer init with interrupt
   HAL_TIM_Base_Start(&htim3);
 
-  DWT_Delay_Init();
+  //DWT_Delay_Init();
 
   BSP_LED_On(LED_GREEN);
   /* USER CODE END BSP */
@@ -674,10 +674,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Ecat_CS_GPIO_Port, Ecat_CS_Pin, GPIO_PIN_RESET);
-
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Ecat_RST_GPIO_Port, Ecat_RST_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(GPIOE, Ecat_CS_Pin|Ecat_RST_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TMC_DIR_GPIO_Port, TMC_DIR_Pin, GPIO_PIN_RESET);

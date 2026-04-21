@@ -96,24 +96,6 @@ static void lan9252_write_32 (uint16_t address, uint32_t val)
     spi_unselect();
 }
 
-/* lan9252 single read */
-//static uint32_t lan9252_read_32 (uint32_t address)
-//{
-//   uint8_t data[4];
-//   uint8_t result[4];
-//
-//   data[0] = ESC_CMD_FAST_READ;
-//   data[1] = ((address >> 8) & 0xFF);
-//   data[2] = (address & 0xFF);
-//   data[3] = 0x00; // Dummy
-//
-//   spi_select();
-//   write(data, 4);
-//   read(result, 4);
-//   spi_unselect();
-//
-//   return ((result[3] << 24) | (result[2] << 16) | (result[1] << 8) | result[0]);
-//}
 static uint32_t lan9252_read_32 (uint32_t address)
 {
    uint8_t tx_buf[8] = {0x0B, (uint8_t)(address >> 8), (uint8_t)address, 0x00, 0, 0, 0, 0};
@@ -203,57 +185,6 @@ static void ESC_read_pram (uint16_t address, void *buf, uint16_t len)
    // 명령어(4바이트) + 패딩 오프셋을 걷어내고 순수 데이터만 복사
    memcpy(temp_buf, &rx_buf[4 + first_byte_position], len);
 }
-//static void ESC_read_pram (uint16_t address, void *buf, uint16_t len)
-//{
-//   uint32_t value;
-//   uint8_t * temp_buf = buf;
-//   uint16_t byte_offset = 0;
-//   uint8_t fifo_cnt, first_byte_position, temp_len, data[4];
-//
-//   value = ESC_PRAM_CMD_ABORT;
-//   lan9252_write_32(ESC_PRAM_RD_CMD_REG, value);
-//
-//   do {
-//      value = lan9252_read_32(ESC_PRAM_RD_CMD_REG);
-//   } while(value & ESC_PRAM_CMD_BUSY);
-//
-//   value = ESC_PRAM_SIZE(len) | ESC_PRAM_ADDR(address);
-//   lan9252_write_32(ESC_PRAM_RD_ADDR_LEN_REG, value);
-//
-//   value = ESC_PRAM_CMD_BUSY;
-//   lan9252_write_32(ESC_PRAM_RD_CMD_REG, value);
-//
-//   do {
-//      value = lan9252_read_32(ESC_PRAM_RD_CMD_REG);
-//   } while((value & ESC_PRAM_CMD_AVAIL) == 0);
-//
-//   fifo_cnt = ESC_PRAM_CMD_CNT(value);
-//   value = lan9252_read_32(ESC_PRAM_RD_FIFO_REG);
-//   fifo_cnt--;
-//
-//   first_byte_position = (address & 0x03);
-//   temp_len = ((4 - first_byte_position) > len) ? len : (4 - first_byte_position);
-//
-//   memcpy(temp_buf, ((uint8_t *)&value + first_byte_position), temp_len);
-//   len -= temp_len;
-//   byte_offset += temp_len;
-//
-//   spi_select();
-//   data[0] = ESC_CMD_FAST_READ;
-//   data[1] = ((ESC_PRAM_RD_FIFO_REG >> 8) & 0xFF);
-//   data[2] = (ESC_PRAM_RD_FIFO_REG & 0xFF);
-//   data[3] = 0x00;
-//   write(data, 4);
-//
-//   while(len > 0) {
-//      temp_len = (len > 4) ? 4: len;
-//      read((temp_buf + byte_offset), 4);
-//      fifo_cnt--;
-//      len -= temp_len;
-//      byte_offset += temp_len;
-//   }
-//   spi_unselect();
-//}
 
 /* ESC write process data ram function */
 static void ESC_write_pram (uint16_t address, void *buf, uint16_t len)
@@ -293,59 +224,7 @@ static void ESC_write_pram (uint16_t address, void *buf, uint16_t len)
    HAL_SPI_Transmit(&hspi1, tx_buf, 3 + padded_len, HAL_MAX_DELAY);
    spi_unselect();
 }
-//static void ESC_write_pram (uint16_t address, void *buf, uint16_t len)
-//{
-//   uint32_t value;
-//   uint8_t * temp_buf = buf;
-//   uint16_t byte_offset = 0;
-//   uint8_t fifo_cnt, first_byte_position, temp_len, data[3];
-//
-//   value = ESC_PRAM_CMD_ABORT;
-//   lan9252_write_32(ESC_PRAM_WR_CMD_REG, value);
-//
-//   do {
-//      value = lan9252_read_32(ESC_PRAM_WR_CMD_REG);
-//   } while(value & ESC_PRAM_CMD_BUSY);
-//
-//   value = ESC_PRAM_SIZE(len) | ESC_PRAM_ADDR(address);
-//   lan9252_write_32(ESC_PRAM_WR_ADDR_LEN_REG, value);
-//
-//   value = ESC_PRAM_CMD_BUSY;
-//   lan9252_write_32(ESC_PRAM_WR_CMD_REG, value);
-//
-//   do {
-//      value = lan9252_read_32(ESC_PRAM_WR_CMD_REG);
-//   } while((value & ESC_PRAM_CMD_AVAIL) == 0);
-//
-//   fifo_cnt = ESC_PRAM_CMD_CNT(value);
-//   first_byte_position = (address & 0x03);
-//   temp_len = ((4 - first_byte_position) > len) ? len : (4 - first_byte_position);
-//
-//   value = 0;
-//   memcpy(((uint8_t *)&value + first_byte_position), temp_buf, temp_len);
-//   lan9252_write_32(ESC_PRAM_WR_FIFO_REG, value);
-//
-//   len -= temp_len;
-//   byte_offset += temp_len;
-//   fifo_cnt--;
-//
-//   spi_select();
-//   data[0] = ESC_CMD_SERIAL_WRITE;
-//   data[1] = ((ESC_PRAM_WR_FIFO_REG >> 8) & 0xFF);
-//   data[2] = (ESC_PRAM_WR_FIFO_REG & 0xFF);
-//   write(data, 3);
-//
-//   while(len > 0) {
-//      temp_len = (len > 4) ? 4 : len;
-//      value = 0;
-//      memcpy((uint8_t *)&value, (temp_buf + byte_offset), temp_len);
-//      write((uint8_t *)&value, 4);
-//      fifo_cnt--;
-//      len -= temp_len;
-//      byte_offset += temp_len;
-//   }
-//   spi_unselect();
-//}
+
 
 /** ESC read function used by the Slave stack. */
 void ESC_read (uint16_t address, void *buf, uint16_t len)
