@@ -360,31 +360,6 @@ void Motor_Pulse_ISR(uint8_t axis) {
         }
     }
 }
-//void Motor_Pulse_ISR(uint8_t axis) {
-//    if (g_is_moving[axis]) {
-//        TIM_TypeDef *TIMx = motor_timers[axis];
-//
-//        if (TIMx->SR & TIM_SR_UIF) {
-//            TIMx->SR = ~TIM_SR_UIF;
-//
-//            // TIM3의 변화량 확인.
-//            Sync_Position_With_Hardware(axis);
-//
-//            // ⭐️ 오버슛 안전 정지 로직
-//            bool is_forward = (HAL_GPIO_ReadPin(DIR_PORT[axis], DIR_PIN[axis]) == GPIO_PIN_RESET);
-//
-//            // 정방향 주행 중이면서 목표치를 넘었거나, 역방향 주행 중 목표치를 넘었을 때 즉시 차단
-//            if ((is_forward && g_actual_pos_pulses[axis] >= g_target_pos_pulses[axis]) ||
-//                (!is_forward && g_actual_pos_pulses[axis] <= g_target_pos_pulses[axis])) {
-//
-//                TIMx->CR1 &= ~TIM_CR1_CEN;
-//                TIMx->CCER &= ~TIM_CCER_CC1E;
-//                g_is_moving[axis] = false;
-//                g_current_speed[axis] = 0;
-//            }
-//        }
-//    }
-//}
 
 void DWT_Delay_Init(void) {
     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
