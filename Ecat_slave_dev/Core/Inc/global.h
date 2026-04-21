@@ -71,4 +71,9 @@ extern TIM_TypeDef* motor_timers[MAX_AXIS];
 //Motor Position
 extern int32_t g_pos_accumulator[MAX_AXIS];
 extern uint32_t DWT_GetTick();
+
+//etc
+extern volatile int32_t g_target_pos_pulses[MAX_AXIS];
+extern volatile int32_t g_actual_pos_pulses[MAX_AXIS];
+extern volatile bool g_is_moving[MAX_AXIS];
 #endif /* INC_GLOBAL_H_ */
